@@ -1,0 +1,69 @@
+[build-system]
+requires = ["hatchling>=1.18"]
+build-backend = "hatchling.build"
+
+[project]
+name = "backtest-skeptic"
+version = "0.1.0"
+description = "Checks that tell you whether a trading backtest's edge is real: lookahead tests, matched random-entry nulls, no-skill baselines, fill realism, overfitting statistics."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "The backtest-skeptic contributors" }]
+keywords = [
+    "backtesting",
+    "trading",
+    "quantitative-finance",
+    "overfitting",
+    "deflated-sharpe-ratio",
+    "lookahead-bias",
+    "statistics",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Office/Business :: Financial :: Investment",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Typing :: Typed",
+]
+dependencies = ["numpy>=1.23"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "hypothesis>=6", "ruff>=0.5", "mypy>=1.8"]
+
+[project.scripts]
+backtest-skeptic = "backtest_skeptic.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/crypto4167/opensource"
+Issues = "https://github.com/crypto4167/opensource/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/backtest_skeptic"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "NPY", "RUF", "SIM"]
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_unreachable = true
+files = ["src/backtest_skeptic"]
