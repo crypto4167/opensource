@@ -831,3 +831,15 @@ def test_stop_filled_better_than_the_stop_on_a_bar_that_did_not_gap_fails():
     # A fill at the stop, or worse, is fine.
     rec = dict(side=1, entry_index=1, exit_index=2, entry_price=100, exit_price=94.5)
     assert codes(audit_fills(bars, [dict(rec, stop=95, target=110, reason="stop")])) == []
+
+
+def test_target_filled_better_than_the_target_intrabar_warns():
+    bars = Bars([100, 100, 100], [101, 101, 115], [99, 99, 99], [100, 100, 112])
+    rec = dict(side=1, entry_index=1, exit_index=2, entry_price=100, exit_price=114)
+    audit = audit_fills(bars, [dict(rec, stop=95, target=110, reason="target")])
+    assert "target_fill_better_than_target" in codes(audit)
+    # At the target, or at the close (a close-triggered exit), it is not raised.
+    for price in (110, 112):
+        rec = dict(side=1, entry_index=1, exit_index=2, entry_price=100, exit_price=price)
+        audit = audit_fills(bars, [dict(rec, stop=95, target=110, reason="target")])
+        assert "target_fill_better_than_target" not in codes(audit)

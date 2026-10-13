@@ -68,6 +68,10 @@ Checks
    ``stop_fill_too_good`` (fail): a stop exit on a bar that did not open
    beyond the stop, filled better than the stop. A fixed stop triggers at the
    stop and fills there or worse.
+   ``target_fill_better_than_target`` (warn): a target exit inside the bar
+   (not at its close) at a better price than the target, or than the open
+   when the bar opened beyond the target. A resting limit fills at its
+   price.
 6. ``missed_earlier_touch`` (fail): replaying the bars from the entry bar up
    to the bar before the exit (and the exit bar itself for an exit at its
    close that is not a stop or target exit), some bar traded through the
@@ -201,6 +205,10 @@ CODES: Mapping[str, tuple[Severity, str]] = MappingProxyType(
         "stop_fill_too_good": (
             "fail",
             "stop filled better than the stop on a bar that did not open through it",
+        ),
+        "target_fill_better_than_target": (
+            "warn",
+            "target filled inside the bar at a better price than the target",
         ),
         "missed_earlier_touch": (
             "fail",
@@ -1080,6 +1088,20 @@ class _Auditor:
                     k,
                     f"the stop {_fmt(stop)} filled at mid {_fmt(exit_mid)} on bar {x}, which "
                     "did not open through it; a fixed stop fills at the stop or worse",
+                    x,
+                )
+
+        if t.target is not None and target_exit and x >= e:
+            # A resting limit fills at the target, or at the open if the bar
+            # opened beyond it. An exit at the close may be close-triggered.
+            target = t.target
+            limit = target if x == e else target + max(0.0, side * (open_x - target)) * side
+            if side * (exit_mid - limit) > self.eps(limit) and not self.near(exit_mid, float(c[x])):
+                self.add(
+                    "target_fill_better_than_target",
+                    k,
+                    f"the target {_fmt(target)} filled at mid {_fmt(exit_mid)} inside bar {x}; "
+                    f"a limit order at the target fills at {_fmt(limit)}",
                     x,
                 )
 
