@@ -737,3 +737,19 @@ def test_truncation_sees_a_leak_through_the_base_of_a_prefix_view(walk):
         return out
 
     assert not truncation_test(through_base, walk, check="prefix").passed
+
+
+def test_large_integer_outputs_are_compared_exactly(walk):
+    def big_int(b):
+        out = np.arange(len(b), dtype=np.int64) + 2**60
+        out[:-1] += (b.close[1:] > b.close[:-1]).astype(np.int64)
+        return out
+
+    assert not truncation_test(big_int, walk).passed
+    assert not perturbation_test(big_int, walk).passed
+
+    def honest_int(b):
+        return np.arange(len(b), dtype=np.int64) + 2**60
+
+    assert truncation_test(honest_int, walk).passed
+    assert perturbation_test(honest_int, walk).passed

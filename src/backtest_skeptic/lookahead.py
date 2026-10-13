@@ -273,6 +273,8 @@ def _cell(value: Any) -> Cell:
         return None
     if isinstance(value, (bool, np.bool_)):
         return float(value)
+    if isinstance(value, (int, np.integer)) and abs(int(value)) > 2**53:
+        return str(int(value))  # a float would round it and hide the difference
     if isinstance(value, (int, float, np.integer, np.floating)):
         return float(value)
     return str(value)
@@ -385,7 +387,10 @@ def _coerce(
             "the number of columns must not depend on how many bars there are"
         )
     kind = arr.dtype.kind
-    if kind in "biuf":
+    if kind in "iu" and arr.size and np.abs(arr.astype(np.float64)).max() > 2.0**53:
+        # float64 would round these (nanosecond timestamps, say): keep them exact.
+        arr = arr.astype(np.int64) if kind == "i" else arr.astype(np.uint64)
+    elif kind in "biuf":
         arr = arr.astype(np.float64)
     elif kind == "O":
         # Numbers and None become float64; genuinely non-numeric objects are
@@ -425,6 +430,9 @@ def _bad_cells(
     match when ``|a - b| <= atol + rtol * max(|a|, |b|)``, and an infinity
     only matches the same infinity.
     """
+    if expected.dtype.kind in "iu" and got.dtype.kind in "iu":
+        exact: NDArray[np.bool_] = expected != got
+        return exact
     if expected.dtype == np.float64 and got.dtype == np.float64:
         with np.errstate(invalid="ignore", over="ignore"):
             same = (expected == got) | (np.isnan(expected) & np.isnan(got))
