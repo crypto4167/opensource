@@ -653,12 +653,17 @@ def _baseline_check(inp: _Inputs) -> CheckResult:
             f" The break-even rate after costs is {_pct(b.breakeven_rate)}, a margin of "
             f"{_pts(b.margin)}."
         )
-    if p >= alpha:
+    status: Status = "WARN"
+    if not all_exits and b.p_value_lower < alpha:
+        verdict = (
+            f" The entries hit the target less often than chance (lower-tail "
+            f"{_p(b.p_value_lower)}); {b.ambiguous} of the resolved trades exited on bars that "
+            "touched both levels, which OHLC data books as stops."
+        )
+    elif p >= alpha:
         verdict = " Not distinguishable from random entries with the same brackets."
-        status: Status = "WARN"
     elif b.margin <= 0:
         verdict = " The entries beat chance but not the break-even rate after costs."
-        status = "WARN"
     else:
         verdict = " The entries beat both chance and costs."
         status = "PASS"
@@ -677,6 +682,8 @@ def _baseline_details(b: BaselineResult, all_exits: bool) -> dict[str, Any]:
         "skill_edge",
         "margin",
         "p_value",
+        "p_value_lower",
+        "ambiguous",
         "unresolved_share",
         "exclusion_bias",
         "all_exits_n",
