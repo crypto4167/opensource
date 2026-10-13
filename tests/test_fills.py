@@ -899,3 +899,20 @@ def test_csv_row_with_more_fields_than_the_header_is_an_error(tmp_path):
     )
     with pytest.raises(ValueError, match="line 2"):
         TradeLog.from_csv(path, bars)
+
+
+def test_timestamps_with_a_utc_offset_do_not_match_naive_bars():
+    t = np.array(
+        ["2024-01-02T00:00", "2024-01-02T05:00", "2024-01-02T10:00"], dtype="datetime64[m]"
+    )
+    bars = Bars([100] * 3, [101] * 3, [99] * 3, [100] * 3, time=t)
+    rec = dict(side=1, exit_time="2024-01-02T10:00", entry_price=100, exit_price=100)
+    for when in (
+        "2024-01-02T10:00+05:00",
+        "2024-01-02T05:00Z",
+        datetime.datetime(2024, 1, 2, 5, tzinfo=datetime.timezone.utc),
+    ):
+        with pytest.raises(ValueError, match="offset"):
+            TradeLog.from_records([dict(rec, entry_time=when)], bars)
+    log = TradeLog.from_records([dict(rec, entry_time="2024-01-02T05:00")], bars)
+    assert log[0].entry_index == 1

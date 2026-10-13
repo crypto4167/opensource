@@ -139,6 +139,7 @@ from __future__ import annotations
 
 import csv
 import math
+import re
 from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
@@ -348,6 +349,9 @@ def _reason(value: Any) -> ExitKind | None:
     return kind
 
 
+_OFFSET = re.compile(r"\d:\d\d(?::\d\d(?:\.\d+)?)?\s*(?:[zZ]|[+-]\d\d(?::?\d\d)?)$")
+
+
 def _time_index(bars: Bars, value: Any, what: str) -> int:
     """Index of the bar whose timestamp equals ``value``."""
     times = bars.time
@@ -355,6 +359,14 @@ def _time_index(bars: Bars, value: Any, what: str) -> int:
         raise ValueError(f"{what}: the bars have no timestamps, so give bar indices instead")
     kind = times.dtype.kind
     key: Any = value.strip() if isinstance(value, str) else value
+    if kind == "M" and (
+        getattr(key, "tzinfo", None) is not None
+        or (isinstance(key, str) and _OFFSET.search(key) is not None)
+    ):
+        raise ValueError(
+            f"{what}: {value!r} has a UTC offset but the bars' timestamps have none; "
+            "convert the log to the bars' time zone and drop the offset"
+        )
     try:
         if kind == "M":
             key = np.datetime64(key)
