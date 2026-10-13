@@ -208,3 +208,19 @@ def test_costs_flow_through(random_walk: tuple[Bars, BacktestResult]) -> None:
     assert good.check("random_entry").status != "SKIP"
     bad = audit(bars, log, max_bars=MAX_BARS, n_sims=50)
     assert bad.check("random_entry").status == "SKIP"
+
+
+def test_any_time_out_switches_the_baseline_to_the_all_exits_score():
+    # A tight target with a short holding limit: a few trades time out. Dropping
+    # them biases the resolved-only test toward the nearer level (the target),
+    # so the report must score every exit even when time-outs are rare.
+    bars = synthetic.random_walk_bars(6000, vol=0.01, seed=8)
+    rng = np.random.default_rng(8)
+    side = np.where(rng.random(len(bars)) < 0.1, rng.choice([-1.0, 1.0], len(bars)), 0.0)
+    c = bars.close
+    res = run_signals(bars, side, c * (1 - side * 0.02), c * (1 + side * 0.004), max_bars=4)
+    timed_out = sum(t.reason in ("time", "end") for t in res.trades)
+    assert 0 < timed_out < 0.10 * len(res.trades)
+    check = audit(bars, res, n_sims=N_SIMS).check("no_skill_baseline")
+    assert check.details["scored_on"] == "all_exits"
+    assert check.status != "PASS"

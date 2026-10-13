@@ -21,4 +21,7 @@ First public release.
 - `holdout`: purged train/holdout split, read-once holdout ledger and trial registry.
 - `spanning`: factor spanning regression with HAC standard errors and proxy replication.
 - `synthetic`: random walks with continuous-path highs and lows, planted-signal bars and a cheating oracle for positive controls.
-- `backtest-skeptic` command-line interface.
+- `report.audit`: every check the inputs support in one call, for engine results or external trade logs, as text, Markdown or JSON.
+- `backtest-skeptic` command-line interface with `audit`, `lookahead`, `dsr` and `selftest` subcommands and CI-friendly exit codes.
+- Documentation: check reference, fill rules, FAQ, and measured false-positive rates and power for every statistical test (`docs/calibration.md`, reproducible with `scripts/calibration.py`).
+- Examples: leaky signal functions, a random strategy with an 84% win rate, and a backtester with fill bugs.

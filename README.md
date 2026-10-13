@@ -75,8 +75,8 @@ No-skill baseline over 1008 resolved trades (excluded: 0 time, 1 end, 0 invalid 
   win rate 49.0% vs no-skill 50.0%: skill edge -1.0 pts (z -0.63, one-sided p 0.7458, exact)
   break-even win rate 53.6%: cost drag +3.6 pts, margin over break-even -4.5 pts
   a no-skill trader with these brackets expects -0.0690R per trade; these trades averaged -0.0883R
-  all exits (1009 trades, time/end scored by position): edge -1.0 pts (z -0.63, p 0.7346, normal approx.)
-Random-entry test (expectancy, 1009 trades): observed -0.0882 vs null -0.0739 (sd 0.0293) over 1000 simulations; p = 0.6803, percentile 32.0, z -0.49
+  all exits (1009 trades, time/end scored by position): edge -1.0 pts (z -0.63, p 0.7355)
+Random-entry test (expectancy, 1009 trades): observed -0.0882 vs null -0.0749 (sd 0.0304) over 1000 simulations; p = 0.6893, percentile 31.1, z -0.44
 Fill audit (heuristic) of 1009 trades: PASSED (no fails)
   ambiguous exit bars: 6 (0 booked as target)
   expectancy over 1009 rescored trades: booked -0.0882R, worst case -0.0882R, best case -0.0767R
@@ -110,27 +110,44 @@ Full inputs, outputs, thresholds and limitations are in [docs/checks.md](docs/ch
 
 ## Command-line interface
 
-Planned for the first release. The interface will be:
-
 ```text
 backtest-skeptic audit --bars BARS.csv --trades TRADES.csv
     [--half-spread X] [--fee-rate X] [--slippage X] [--max-bars N]
-    [--same-bar stop|target] [--sims N] [--seed N]
-    [--format text|markdown|json] [--fail-on fail|warn|never]
+    [--same-bar stop|target] [--sims N] [--seed N] [--periods-per-year P]
+    [--format text|markdown|json] [--fail-on fail|warn|never] [--time-column NAME]
 
-backtest-skeptic lookahead MODULE:FUNCTION --bars BARS.csv [--mode truncation|perturbation|both]
+backtest-skeptic lookahead MODULE:FUNCTION --bars BARS.csv
+    [--mode truncation|perturbation|both] [--min-history N]
 
-backtest-skeptic dsr --sharpe S --n-obs T --trials N --trials-variance V [--skew G] [--kurtosis K]
+backtest-skeptic dsr --sharpe S --n-obs T --trials N --trials-variance V
+    [--skew G] [--kurtosis K] [--periods-per-year P --annualized] [--format text|json]
 
 backtest-skeptic selftest
 ```
 
-- `audit` runs the trade-log checks on a bars CSV and a trades CSV (the trade columns are described in [docs/faq.md](docs/faq.md#can-i-use-this-with-vectorbt-backtestingpy-or-my-own-engine)). Exit code 0 means clean, 1 means a check failed at the `--fail-on` level, 2 means a usage or data error, so it can gate a CI job.
-- `lookahead` imports `FUNCTION` from `MODULE`, calls it on the bars and runs the truncation test, the perturbation test, or both.
-- `dsr` computes the deflated Sharpe ratio from summary numbers.
-- `selftest` runs the built-in positive and negative controls.
+- `audit` runs every check the inputs support on a bars CSV and a trade-log CSV (columns are described in [docs/faq.md](docs/faq.md#can-i-use-this-with-vectorbt-backtestingpy-or-my-own-engine)): fill realism, the no-skill baseline, the random-entry null, concentration, stability and Sharpe statistics. Pass the costs and engine settings the backtest used. Exit code 0 means no check reached the `--fail-on` level, 1 means one did, 2 means a usage or data error, so it can gate a CI job.
+- `lookahead` imports `FUNCTION` from a module or a `.py` file, calls it on the bars and runs the truncation test, the perturbation test, or both. It exits 1 when it finds a leak.
+- `dsr` computes the probabilistic and deflated Sharpe ratios, the expected maximum Sharpe ratio of the trials and the minimum track record length from summary numbers. Kurtosis is raw (3 for a normal distribution).
+- `selftest` runs the built-in positive and negative controls and exits 1 if any is judged wrongly.
 
-The Python equivalent of `audit` is `backtest_skeptic.report.audit(bars, trades, costs=...)`.
+`python -m backtest_skeptic` works the same way. The Python equivalent of `audit` is `backtest_skeptic.report.audit(bars, trades, costs=...)`, which returns a report with `to_text()`, `to_markdown()` and `to_json()`.
+
+The quickstart strategy above, written to CSV and audited:
+
+```text
+$ backtest-skeptic audit --bars bars.csv --trades trades.csv --half-spread 0.01 --fee-rate 0.0001
+Backtest audit: 1009 trades on 5000 bars (trade log)
+Worst status: WARN
+
+[PASS] Fill realism       Every fill in 1009 trades is consistent with the bars. Replayed from the bars, expectancy lies between -0.088R and -0.077R per trade; the log books -0.088R.
+[WARN] No-skill baseline  0.1% of trades exited on time or at the end of the data, so every exit is scored by how far the price got toward the target: edge -1.0 pts over no skill across 1009 trades (p = 0.736). On the 1008 trades that hit a level, the win rate 49.0% is -4.5 pts from the break-even rate 53.6%. Not distinguishable from random entries with the same brackets.
+[WARN] Random-entry null  Expectancy -0.088R per trade against -0.075R for random entries with the same sides, brackets and costs (1000 simulations, p = 0.689). Not distinguishable from random entries.
+[SKIP] Concentration      Skipped. The total is -89.025R, so there is no profit for a few days or trades to carry.
+[WARN] Stability          0 of 3 quarters (0.0%) were positive; the 95% block-bootstrap interval for the mean per trade is [-0.141R, -0.028R]. Too few quarters made money.
+[WARN] Sharpe statistics  Sharpe ratio -0.090 per trade over 1009 trades (skew 0.04, raw kurtosis 1.01): PSR against zero is 0.002 and the minimum track record for 95% confidence is infinite. PSR is below 0.95 and the Sharpe ratio is not above zero.
+```
+
+The full output also explains why the deflated Sharpe ratio is not computed: it needs the number of configurations tried, which a trade log does not record.
 
 ## How it differs from existing tools
 
@@ -153,6 +170,7 @@ pypbo and backtesting.py are licensed under the AGPL, and mlfinlab is no longer 
 - **Several checks are heuristics** with no significance level (lookahead, fill audit, concentration, sub-periods, cost stress, entry delay). Their thresholds are stated in [docs/checks.md](docs/checks.md).
 - **The overfitting statistics need honest inputs.** The deflated Sharpe ratio needs the number of trials you ran, and PBO needs the returns of every configuration you tried. `TrialRegistry` records them, but only if you use it from the start.
 - A random strategy still passes a test at the 5% level about 5% of the time. Correct for the number of strategies you tested.
+- **Measured error rates are in [docs/calibration.md](docs/calibration.md).** Most tests reject a true null at close to their nominal 5%. The exceptions are stated there: the probabilistic Sharpe ratio rejects 7% to 8% of the time with 60 fat-tailed or skewed returns, and Newey-West t-statistics with the default lags reject 10% to 13% of the time on AR(1) series with coefficient 0.6 and 250 to 1000 points.
 
 ## Citing
 
@@ -175,7 +193,7 @@ If you use a check that implements a published method, cite the paper. The refer
 - Lo, A. W. (2002). The Statistics of Sharpe Ratios. *Financial Analysts Journal* 58(4).
 - Newey, W. K. & West, K. D. (1987). A Simple, Positive Semi-Definite, Heteroskedasticity and Autocorrelation Consistent Covariance Matrix. *Econometrica* 55(3).
 - Newey, W. K. & West, K. D. (1994). Automatic Lag Selection in Covariance Matrix Estimation. *Review of Economic Studies* 61(4).
-- Phipson & Smyth, 2010, "Permutation P-values Should Never Be Zero", Statistical Applications in Genetics and Molecular Biology 9(1).
+- Phipson, B. & Smyth, G. K. (2010). Permutation P-values Should Never Be Zero: Calculating Exact P-values When Permutations Are Randomly Drawn. *Statistical Applications in Genetics and Molecular Biology* 9(1).
 - Politis, D. N. & Romano, J. P. (1994). The stationary bootstrap. *Journal of the American Statistical Association* 89(428).
 
 ## Contributing

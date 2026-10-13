@@ -18,8 +18,8 @@ jobs:
           python-version: "3.12"
       - run: python -m pip install --upgrade pip
       - run: pip install -e ".[dev]"
-      - run: ruff check src tests examples
-      - run: ruff format --check src tests examples
+      - run: ruff check src tests examples scripts
+      - run: ruff format --check src tests examples scripts
       - run: mypy
 
   test:
@@ -47,6 +47,7 @@ jobs:
           python examples/lookahead_bugs.py
           python examples/random_strategy_audit.py
           python examples/fill_audit.py
+          backtest-skeptic selftest
 
   oldest-numpy:
     runs-on: ubuntu-latest

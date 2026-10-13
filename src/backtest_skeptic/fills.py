@@ -377,7 +377,50 @@ def _time_index(bars: Bars, value: Any, what: str) -> int:
     try:
         return bars.index_of(key)
     except (KeyError, TypeError):
-        raise ValueError(f"{what}: no bar has timestamp {value!r}") from None
+        pass
+    if kind in "US" and isinstance(key, str):
+        # The same instant written another way ("2024-01-02 00:00" against
+        # "2024-01-02T00:00:00") still names one bar.
+        wanted = _naive_instant(key)
+        parsed = _parsed_times(times)
+        if wanted is not None and parsed is not None:
+            hits = np.flatnonzero(parsed == wanted)
+            if len(hits) == 1:
+                return int(hits[0])
+            if len(hits) > 1:
+                raise ValueError(f"{what}: {value!r} matches more than one bar")
+    raise ValueError(f"{what}: no bar has timestamp {value!r}")
+
+
+def _naive_instant(text: str) -> np.datetime64 | None:
+    """``text`` as a naive ISO-8601 instant, or ``None`` if it is not one."""
+    text = text.strip()
+    if not text or text[0] in "+-" or _OFFSET.search(text) or text.replace(".", "").isdigit():
+        return None
+    try:
+        return np.datetime64(text.replace(" ", "T", 1), "ns")
+    except ValueError:
+        return None
+
+
+_PARSED_CACHE: list[tuple[NDArray[Any], NDArray[np.datetime64] | None]] = []
+
+
+def _parsed_times(times: NDArray[Any]) -> NDArray[np.datetime64] | None:
+    """String bar timestamps as naive instants, parsed once per array."""
+    for cached, parsed in _PARSED_CACHE:
+        if cached is times:
+            return parsed
+    out: NDArray[np.datetime64] | None = np.empty(len(times), dtype="datetime64[ns]")
+    for i, t in enumerate(times):
+        instant = _naive_instant(str(t))
+        if instant is None:
+            out = None
+            break
+        assert out is not None
+        out[i] = instant
+    _PARSED_CACHE[:] = [(times, out)]
+    return out
 
 
 # --------------------------------------------------------------- trade rows
@@ -575,8 +618,10 @@ class TradeLog:
         Required per record: ``side`` (``+1/-1``, ``BUY/SELL``, ``long/short``),
         ``entry_price``, ``exit_price``, and the entry and exit bars as
         ``entry_index``/``exit_index`` or as ``entry_time``/``exit_time``
-        (matched exactly against ``bars.time``; strings are parsed as
-        ``datetime64`` when the bars have datetime timestamps). Optional:
+        (matched against ``bars.time``: exactly, or as the same ISO-8601
+        instant when both are strings, so ``2024-01-02 00:00`` finds the bar
+        stamped ``2024-01-02T00:00:00``; strings are parsed as ``datetime64``
+        when the bars have datetime timestamps). Optional:
         ``signal_index`` or ``signal_time``, ``stop``, ``target``, ``reason``.
         When both an index and a time are given they must name the same bar.
         Column names are matched case-insensitively and a few common aliases

@@ -85,9 +85,11 @@ THRESHOLDS: Mapping[str, float] = MappingProxyType(
         # Significance level for the no-skill and random-entry p-values.
         "alpha": 0.05,
         # Above this share of time and end-of-data exits, the baseline is judged
-        # on its all-exits score, which has no exclusion bias. no_skill_test
-        # warns at the same share.
-        "unresolved_share": 0.10,
+        # on its all-exits score, which has no exclusion bias. 0.0 means any
+        # time-out switches to it: leaving out even a few timed-out trades
+        # biases the resolved-only test toward the nearer level, and with no
+        # time-outs the two scores are the same test.
+        "unresolved_share": 0.0,
         # Concentration: the best `top_days` exit days, or the best
         # `top_trade_fraction` of trades, producing more than `max_top_share`
         # of the total (1.0 = the whole total, so everything else lost money).

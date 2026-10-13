@@ -916,3 +916,46 @@ def test_timestamps_with_a_utc_offset_do_not_match_naive_bars():
             TradeLog.from_records([dict(rec, entry_time=when)], bars)
     log = TradeLog.from_records([dict(rec, entry_time="2024-01-02T05:00")], bars)
     assert log[0].entry_index == 1
+
+
+def test_timestamps_match_the_same_instant_written_differently(tmp_path):
+    path = tmp_path / "bars.csv"
+    path.write_text(
+        "time,open,high,low,close\n"
+        "2024-01-01T00:00:00,1,1.1,0.9,1\n"
+        "2024-01-02T00:00:00,1,1.1,0.9,1\n"
+        "2024-01-03T00:00:00,1,1.1,0.9,1\n"
+    )
+    bars = Bars.from_csv(path)
+    for written in (
+        "2024-01-02T00:00:00",
+        "2024-01-02 00:00:00",
+        "2024-01-02",
+        " 2024-01-02 00:00",
+    ):
+        log = TradeLog.from_records(
+            [
+                {
+                    "side": 1,
+                    "entry_time": written,
+                    "exit_time": "2024-01-03",
+                    "entry_price": 1,
+                    "exit_price": 1,
+                }
+            ],
+            bars,
+        )
+        assert (log.rows[0].entry_index, log.rows[0].exit_index) == (1, 2)
+    with pytest.raises(ValueError, match="no bar has timestamp"):
+        TradeLog.from_records(
+            [
+                {
+                    "side": 1,
+                    "entry_time": "2024-01-05",
+                    "exit_time": "2024-01-03",
+                    "entry_price": 1,
+                    "exit_price": 1,
+                }
+            ],
+            bars,
+        )

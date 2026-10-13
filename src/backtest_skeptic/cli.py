@@ -301,13 +301,50 @@ def _parser() -> argparse.ArgumentParser:
         help="CSV trade log: side, entry_price, exit_price, entry/exit bar index or time; "
         "optional signal_index, stop, target, reason",
     )
-    p.add_argument("--half-spread", type=_non_negative, default=0.0, metavar="X")
-    p.add_argument("--fee-rate", type=_non_negative, default=0.0, metavar="X")
-    p.add_argument("--slippage", type=_non_negative, default=0.0, metavar="X")
-    p.add_argument("--max-bars", type=_positive_int, default=None, metavar="N")
-    p.add_argument("--same-bar", choices=("stop", "target"), default="stop")
-    p.add_argument("--sims", type=_positive_int, default=1000, metavar="N")
-    p.add_argument("--seed", type=_non_negative_int, default=0, metavar="N")
+    p.add_argument(
+        "--half-spread",
+        type=_non_negative,
+        default=0.0,
+        metavar="X",
+        help="half the bid/ask spread, in price units, paid on entry and exit (default 0)",
+    )
+    p.add_argument(
+        "--fee-rate",
+        type=_non_negative,
+        default=0.0,
+        metavar="X",
+        help="commission as a fraction of notional per side, e.g. 0.0005 (default 0)",
+    )
+    p.add_argument(
+        "--slippage",
+        type=_non_negative,
+        default=0.0,
+        metavar="X",
+        help="extra adverse price units on entries and stop, time and end exits (default 0)",
+    )
+    p.add_argument(
+        "--max-bars",
+        type=_positive_int,
+        default=None,
+        metavar="N",
+        help="time exit after N bars, counting the entry bar, if the backtest used one",
+    )
+    p.add_argument(
+        "--same-bar",
+        choices=("stop", "target"),
+        default="stop",
+        help="how the backtest booked a bar that touched both levels (default stop)",
+    )
+    p.add_argument(
+        "--sims",
+        type=_positive_int,
+        default=1000,
+        metavar="N",
+        help="random-entry simulations (default 1000)",
+    )
+    p.add_argument(
+        "--seed", type=_non_negative_int, default=0, metavar="N", help="random seed (default 0)"
+    )
     p.add_argument(
         "--periods-per-year",
         type=_finite,

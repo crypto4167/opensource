@@ -35,7 +35,9 @@ edge to see one.
   accompanied all but 5 of those 1000 runs, and `all_exits_p_value`, which
   scores every exit, rejected 3.9%. With far targets and many time-outs it is
   the other way round (0.3%). With gaps as large as the bar volatility and a
-  far target both scores reached 5.3% to 5.4%.
+  far target both scores reached 5.3% to 5.4%. Because of this,
+  `backtest_skeptic.report.audit` judges the baseline on `all_exits_p_value`
+  whenever any trade exited on time or at the end of the data.
 * PSR is close to 5% for normal returns (4.7% to 5.4%). For fat-tailed or
   skewed returns it over-rejects at small n (Student t3: 7.0% at n = 60;
   negated lognormal: 8.05% at n = 60, 5.7% at n = 1000). At SR = 0 the

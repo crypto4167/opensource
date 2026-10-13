@@ -17,6 +17,8 @@ The package bundles the checks that catch the usual ways a backtest lies:
 * :mod:`~backtest_skeptic.holdout` - a read-once holdout ledger and a trial
   registry.
 * :mod:`~backtest_skeptic.spanning` - does a known factor explain the returns?
+* :mod:`~backtest_skeptic.report` - every check the inputs support, in one
+  call (:func:`audit`), also available as the ``backtest-skeptic`` command.
 """
 
 from . import (
@@ -25,6 +27,7 @@ from . import (
     holdout,
     lookahead,
     random_entry,
+    report,
     robustness,
     spanning,
     stats,
@@ -38,6 +41,7 @@ from .holdout import HoldoutLedger, TrialRegistry, split_holdout
 from .lookahead import check_factory, perturbation_test, truncation_test
 from .metrics import Summary, summarize
 from .random_entry import random_entry_test, side_test
+from .report import AuditReport, audit
 from .robustness import block_bootstrap, concentration, cost_stress, entry_delay_test
 from .spanning import spanning_regression
 from .stats import deflated_sharpe_ratio, pbo, probabilistic_sharpe_ratio
@@ -48,6 +52,7 @@ __version__ = "0.1.0"
 __all__ = [
     "LONG",
     "SHORT",
+    "AuditReport",
     "BacktestResult",
     "Bars",
     "Costs",
@@ -59,6 +64,7 @@ __all__ = [
     "TradeLog",
     "TrialRegistry",
     "__version__",
+    "audit",
     "audit_fills",
     "baseline",
     "block_bootstrap",
@@ -76,6 +82,7 @@ __all__ = [
     "probabilistic_sharpe_ratio",
     "random_entry",
     "random_entry_test",
+    "report",
     "resolve_bracket",
     "resolve_many",
     "robustness",
