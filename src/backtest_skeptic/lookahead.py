@@ -646,7 +646,8 @@ def truncation_test(
     bars:
         The data the backtest used.
     checkpoints:
-        Prefix lengths ``k`` (numbers of bars, ``1..len(bars)``) to test. By
+        Prefix lengths ``k`` (numbers of bars, ``1..len(bars)``) to test;
+        ``k = len(bars)`` is the full data and checks nothing. By
         default ``n_checkpoints`` of them are chosen between ``min_history``
         and ``len(bars) - 1``: half evenly spaced, a quarter just after rows
         where the full output is non-zero and non-NaN (where a sparse signal
@@ -703,6 +704,8 @@ def truncation_test(
     skipped: list[int] = []
     ncols = full.shape[1]
     for k in ks:
+        if k == n:
+            continue  # the full data as its own prefix cannot differ: nothing to check
         try:
             raw = fn(bars.prefix(k))
         except Exception as exc:

@@ -137,8 +137,8 @@ def test_nan_against_finite_is_a_mismatch_regression():
     table[5] = [1.0, 2.0, 3.0, 4.0, 5.0]
     rep = truncation_test(by_length(table), bars, checkpoints=[2, 3, 4, 5])
     assert not rep.passed
-    assert rep.n_checked == 4
-    assert rep.n_values == 4
+    assert rep.n_checked == 3  # prefix 5 is the full data and checks nothing
+    assert rep.n_values == 3
     assert rep.n_mismatches == 3
     assert rep.first_bad_index == 1
     assert [(m.checkpoint, m.row, m.expected) for m in rep.mismatches] == [
@@ -687,3 +687,20 @@ def test_self_test_judges_every_probe_correctly():
         "factory_precomputed_leak",
     }
     assert all(results.values()), results
+
+
+# ------------------------------------------------------- adversarial review
+
+
+def _next_close(b):
+    out = np.full(len(b), np.nan)
+    out[:-1] = b.close[1:]
+    return out
+
+
+def test_full_length_prefix_checks_nothing(walk):
+    n = len(walk)
+    report = truncation_test(_next_close, walk, checkpoints=[n])
+    assert not report.passed
+    assert report.n_checked == 0
+    assert not truncation_test(_next_close, walk, min_history=n).passed
