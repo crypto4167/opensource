@@ -576,11 +576,15 @@ def _perturb(bars: Bars, cut: int, rng: np.random.Generator, invert: bool) -> Ba
     factors = rng.uniform(_SCALE_LOW, _SCALE_HIGH, size=(4, m))
     if invert:
         factors = 1.0 / factors
-    new_open = bars.open[tail] * factors[0]
-    new_close = bars.close[tail] * factors[1]
-    stacked = np.vstack(
-        [new_open, new_close, bars.high[tail] * factors[2], bars.low[tail] * factors[3]]
-    )
+    prices = np.vstack([bars.open[tail], bars.close[tail], bars.high[tail], bars.low[tail]])
+    # Scaling cannot move a price of exactly zero, so shift it by the same
+    # factor in units of the bar's largest price (or the series' typical one).
+    size = np.abs(prices).max(axis=0)
+    nonzero = np.abs(np.vstack([bars.open, bars.close]))
+    typical = float(nonzero[nonzero > 0].mean()) if (nonzero > 0).any() else 0.0
+    size = np.where(size > 0, size, typical)
+    stacked = np.where(prices != 0, prices * factors, (factors - 1.0) * size)
+    new_open, new_close = stacked[0], stacked[1]
     o, h, lo, c = bars.open.copy(), bars.high.copy(), bars.low.copy(), bars.close.copy()
     o[tail] = new_open
     c[tail] = new_close
@@ -611,7 +615,9 @@ def perturb_future(bars: Bars, cut: int, *, seed: int | None = 0, invert: bool =
 
     Bars ``0..cut`` are untouched. Each later bar's open, high, low and close
     are multiplied by independent random factors in ``[1.5, 3]`` (divided by
-    them when ``invert`` is true), then the high and low are rebuilt as the
+    them when ``invert`` is true); a price of exactly zero is instead shifted
+    by ``factor - 1`` times the bar's largest price (the series' typical
+    price for an all-zero bar). Then the high and low are rebuilt as the
     maximum and minimum of the four scaled prices so every bar stays valid.
     Volume and timestamps are kept. The result is a plausible-looking but
     completely different future: anything computed for bars ``0..cut`` that

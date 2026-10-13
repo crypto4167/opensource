@@ -427,8 +427,9 @@ def test_perturb_future_rejects_bad_cuts_and_zero_prices(walk):
     with pytest.raises(ValueError, match="cut"):
         perturb_future(walk, -1)
     zeros = Bars.from_close([1.0, 1.0, 0.0])
+    assert perturb_future(zeros, 1).close[2] != 0.0  # shifted, since scaling cannot move it
     with pytest.raises(ValueError, match="zero"):
-        perturb_future(zeros, 1)
+        perturb_future(Bars.from_close([0.0, 0.0, 0.0]), 1)
 
 
 @pytest.mark.parametrize("fn", HONEST, ids=lambda f: f.__name__)
@@ -753,3 +754,10 @@ def test_large_integer_outputs_are_compared_exactly(walk):
 
     assert truncation_test(honest_int, walk).passed
     assert perturbation_test(honest_int, walk).passed
+
+
+def test_perturbation_moves_a_price_series_that_is_zero():
+    o = np.ones(8)
+    c = np.zeros(8)
+    bars = Bars(o, np.maximum(o, c), np.minimum(o, c), c)
+    assert perturbation_test(_next_close, bars).leaks
