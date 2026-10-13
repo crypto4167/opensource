@@ -877,3 +877,15 @@ def test_an_exact_touch_of_the_stop_is_only_counted_in_the_worst_case(stop_low):
     assert audit.worst_expectancy_r == pytest.approx(-1.0)
     booked = (110 - entry) / (entry - stop)
     assert audit.best_expectancy_r == pytest.approx(booked)
+
+
+def test_csv_with_a_byte_order_mark_keeps_its_first_column(tmp_path):
+    bars = Bars([100, 100, 100, 100], [101, 101, 101, 104], [99, 90, 99, 99], [100, 100, 100, 103])
+    path = tmp_path / "bom.csv"
+    path.write_text(
+        "stop,side,entry_index,exit_index,entry_price,exit_price\n95,long,0,3,100,103\n",
+        encoding="utf-8-sig",
+    )
+    log = TradeLog.from_csv(path, bars)
+    assert log[0].stop == 95.0
+    assert "missed_earlier_touch" in codes(audit_fills(bars, log))

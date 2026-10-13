@@ -604,7 +604,7 @@ class TradeLog:
         Errors name the CSV line number. :meth:`to_csv` writes a file this
         reads back unchanged.
         """
-        with open(path, newline="", encoding="utf-8") as fh:
+        with open(path, newline="", encoding="utf-8-sig") as fh:
             reader = csv.DictReader(fh)
             if reader.fieldnames is None:
                 raise ValueError(f"{path}: empty file")
