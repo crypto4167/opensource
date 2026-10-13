@@ -129,6 +129,16 @@ def _returns(values: ArrayLike, name: str = "returns") -> NDArray[np.float64]:
     return x
 
 
+def _unit_scale(x: NDArray[np.float64]) -> float:
+    """``max |x|`` (1.0 for an all-zero or empty array).
+
+    Dividing by it before squaring keeps scale-free statistics from
+    overflowing (values near 1e200) or underflowing (near 1e-200).
+    """
+    s = float(np.abs(x).max()) if x.size else 0.0
+    return s if s > 0 else 1.0
+
+
 def _std_or_raise(x: NDArray[np.float64], name: str = "returns") -> float:
     if len(x) < 2:
         raise ValueError(f"{name}: at least 2 observations are required, got {len(x)}")
@@ -191,6 +201,7 @@ def sharpe_ratio(returns: ArrayLike, *, periods_per_year: float | None = None) -
     zero dispersion (a constant series has no Sharpe ratio).
     """
     x = _returns(returns)
+    x = x / _unit_scale(x)
     sd = _std_or_raise(x)
     sr = float(x.mean()) / sd
     if periods_per_year is not None:
@@ -227,6 +238,7 @@ def moments(returns: ArrayLike) -> tuple[float, float]:
     the probabilistic and deflated Sharpe ratio papers.
     """
     x = _returns(returns)
+    x = x / _unit_scale(x)
     _std_or_raise(x)
     d = x - x.mean()
     m2 = float(np.mean(d**2))
@@ -338,8 +350,10 @@ def expected_max_sharpe(n_trials: float, var_sharpe: float) -> float:
         raise ValueError(f"var_sharpe must be >= 0, got {var_sharpe!r}")
     if n == 1:
         return 0.0
-    z1 = _NORMAL.inv_cdf(1.0 - 1.0 / n)
-    z2 = _NORMAL.inv_cdf(1.0 - 1.0 / (n * math.e))
+    # PhiInv(1 - p) = -PhiInv(p): 1 - 1/N loses digits for large N and rounds
+    # to 1.0 from about N = 1e16, where PhiInv is undefined.
+    z1 = -_NORMAL.inv_cdf(1.0 / n)
+    z2 = -_NORMAL.inv_cdf(1.0 / n / math.e)
     return math.sqrt(v) * ((1.0 - EULER_GAMMA) * z1 + EULER_GAMMA * z2)
 
 
@@ -600,7 +614,7 @@ def pbo(
         raise ValueError(
             f"T={t_rows} rows is too few for n_splits={s}; need T >= 2 * n_splits = {2 * s}"
         )
-    scale = max(1.0, float(np.abs(m).max()))
+    scale = _unit_scale(m)
     if np.all(np.abs(m - m[:, :1]) <= _REL_TOL * scale):
         raise ValueError(
             "all configurations are identical (zero cross-sectional dispersion); PBO is undefined"
@@ -616,7 +630,7 @@ def pbo(
     combos = np.array(combo_list, dtype=np.int64)
 
     if metric is None:
-        stats = _cscv_sharpe(m, bounds, combos)
+        stats = _cscv_sharpe(m / scale, bounds, combos)
     else:
         stats = np.empty((len(combo_list), n_cols), dtype=np.float64)
         for i, c in enumerate(combo_list):
@@ -754,13 +768,19 @@ def newey_west(
       variance is not positive, the Bartlett estimate with the same lags is
       used and the result says so (``fallback=True``, ``kernel='bartlett'``).
 
-    ``lags`` defaults to ``floor(4 * (T / 100) ** (2 / 9))``, the rule of thumb
-    of Newey & West (1994). Raises for fewer than 2 observations, lags outside
-    ``0..T-1``, or zero dispersion.
+    ``lags`` defaults to ``floor(4 * (T / 100) ** (2 / 9))``. Newey & West
+    (1994) use this as the pilot lag from which their automatic procedure
+    estimates the bandwidth; here it is the lag itself, a common rule of
+    thumb. Raises for fewer than 2 observations, lags outside ``0..T-1``, or
+    zero dispersion.
 
     Limitations: asymptotic; with few observations per lag the standard
     error is itself noisy, and a lag choice made after seeing the result is
-    another degree of freedom.
+    another degree of freedom. With strong autocorrelation the default lag
+    is too short: on AR(1) data with coefficient 0.6, ``|t| > 1.96``
+    happened in 12.55% (T = 250) and 10.0% (T = 1000) of null simulations
+    (``docs/calibration.md``); pass a longer ``lags`` when the
+    autocorrelation is known to be persistent.
     """
     v = _returns(x, "x")
     t_obs = len(v)
@@ -777,6 +797,8 @@ def newey_west(
         lag = int(lags)
         if not 0 <= lag <= t_obs - 1:
             raise ValueError(f"lags must be in 0..{t_obs - 1} for {t_obs} observations, got {lag}")
+    scale = _unit_scale(v)
+    v = v / scale
     mean = float(v.mean())
     d = v - mean
     gamma = _autocovariances(d, lag)
@@ -798,8 +820,8 @@ def newey_west(
         )
     se = math.sqrt(lrv / t_obs)
     return NeweyWestResult(
-        mean=mean,
-        se=se,
+        mean=mean * scale,
+        se=se * scale,
         t=mean / se,
         lags=lag,
         kernel=used,
@@ -894,6 +916,7 @@ def lo_annualized_sharpe(returns: ArrayLike, periods: int) -> LoSharpeResult:
     if len(x) < q + 1:
         raise ValueError(f"need at least periods + 1 = {q + 1} observations, got {len(x)}")
     sr = sharpe_ratio(x)
+    x = x / _unit_scale(x)
     gamma = _autocovariances(x - x.mean(), q - 1)
     rho = gamma[1:] / gamma[0]
     eta = lo_scale_factor(rho, q)

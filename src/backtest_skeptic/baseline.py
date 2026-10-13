@@ -81,9 +81,14 @@ look skilled, wide targets look unskilled). Two things guard against this:
   excluded trades; divided by ``n_resolved``, that is ``exclusion_bias``.
 * ``all_exits_edge`` scores every trade: 1 at the target, 0 at the stop and
   ``u`` for a time or end exit. By optional stopping its no-skill mean is
-  ``a / (a + b)`` for every exit type, so it has no exclusion bias. Its test
-  uses the bound ``Var(u) <= p(1 - p)`` for a score in ``[0, 1]`` with mean
-  ``p``, which is conservative, and a normal approximation.
+  ``a / (a + b)`` for every exit type, so it has no exclusion bias. Its
+  p-value treats the score sum, rounded up, as a count of wins with the
+  no-skill Poisson-binomial distribution. That is exact when every trade
+  hit a level. With fractional scores it rests on the bound ``Var(u) <= p(1
+  - p)`` for a score in ``[0, 1]`` with mean ``p``; it is not proven in
+  general, but it was conservative in every random-walk simulation in
+  ``docs/calibration.md``. Above ``exact_limit`` trades it is a normal
+  approximation.
 
 For a baseline that treats every exit the same way under the real price
 process, use matched random entries
@@ -574,8 +579,10 @@ class BaselineResult:
         time and end exits, if the entries had no skill.
     all_exits_n, all_exits_edge, all_exits_z, all_exits_p_value: the
         exclusion-free score over every valid trade (1 at the target, 0 at
-        the stop, the stop-to-target fraction ``u`` otherwise); conservative
-        variance, normal approximation, one-sided.
+        the stop, the stop-to-target fraction ``u`` otherwise); ``z`` uses
+        the conservative variance ``sum p (1 - p)``; the one-sided p-value
+        is the Poisson-binomial tail at the score sum rounded up (normal
+        approximation above ``exact_limit``).
     costs: the costs used for ``r_win``, ``r_loss`` and ``p*``.
     warnings: plain-language problems found.
     """
@@ -663,7 +670,7 @@ class BaselineResult:
             lines.append(
                 f"  all exits ({self.all_exits_n} trades, time/end scored by position): "
                 f"edge {_pts(self.all_exits_edge)} (z {self.all_exits_z:+.2f}, p "
-                f"{_pval(self.all_exits_p_value)}, normal approx.)"
+                f"{_pval(self.all_exits_p_value)})"
             )
         lines.extend(f"  warning: {w}" for w in self.warnings)
         return "\n".join(lines)
@@ -697,8 +704,9 @@ def no_skill_test(
         Slack, in R, for matching a trade's ``r`` to its prices and for
         detecting a stop that filled beyond the stop price (a gap).
     exact_limit:
-        Largest number of resolved trades for the exact Poisson-binomial
-        p-value; above it a normal approximation is used and flagged.
+        Largest number of trades for the exact Poisson-binomial p-values
+        (``p_value`` counts resolved trades, ``all_exits_p_value`` every
+        valid trade); above it a normal approximation is used.
 
     Only trades that exited at the stop or the target are tested against
     ``a / (a + b)``: time and end-of-data exits reached neither level and are
@@ -766,7 +774,13 @@ def no_skill_test(
     all_edge = float((score - p_all).mean())
     sd_all = math.sqrt(float((p_all * (1.0 - p_all)).sum()))
     all_z = float((score - p_all).sum()) / sd_all if sd_all > 0 else 0.0
-    all_p = _NORMAL.cdf(-all_z)
+    if all_n <= exact_limit or sd_all == 0:
+        # The score sum as a count of wins: exact when every score is 0 or 1.
+        # A normal approximation over-rejected small samples with far targets.
+        count = max(0, math.ceil(float(score.sum()) - 1e-9 * all_n))
+        all_p = min(1.0, float(poisson_binomial_pmf(p_all)[count:].sum()))
+    else:
+        all_p = _NORMAL.cdf(-all_z)
 
     warnings: list[str] = []
     se_edge = sd / n_res
@@ -809,6 +823,11 @@ def no_skill_test(
         warnings.append(
             f"{n_res} resolved trades exceed exact_limit={exact_limit}; p-values use a normal "
             "approximation with continuity correction."
+        )
+    elif all_n > exact_limit:
+        warnings.append(
+            f"{all_n} trades exceed exact_limit={exact_limit}; all_exits_p_value uses a normal "
+            "approximation."
         )
 
     return BaselineResult(
