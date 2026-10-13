@@ -674,3 +674,32 @@ def test_registry_feeds_the_expected_maximum_sharpe(tmp_path):
     real = rng.normal(0.35, 1.0, n_obs)
     sr_real = real.mean() / real.std(ddof=1)
     assert (sr_real - e_max) * math.sqrt(n_obs - 1) > 1.645
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="flock is POSIX only")
+def test_reading_waits_for_an_append_in_progress(tmp_path):
+    import fcntl
+
+    path = tmp_path / "trials.jsonl"
+    reg = TrialRegistry(path)
+    reg.record("seed", sharpe=0.1)
+    result = {}
+
+    def read():
+        try:
+            result["n"] = len(reg.trials())
+        except Exception as exc:  # pragma: no cover - the defect this test guards
+            result["error"] = exc
+
+    with open(path, "a", encoding="utf-8") as fh:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        fh.write('{"event": "half a li')  # a writer caught mid-append
+        fh.flush()
+        reader = threading.Thread(target=read)
+        reader.start()
+        reader.join(0.5)
+        assert reader.is_alive(), result  # waits instead of reading half a line
+        fh.truncate(path.stat().st_size - len('{"event": "half a li'))
+        fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+    reader.join(5)
+    assert result == {"n": 1}

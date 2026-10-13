@@ -362,6 +362,9 @@ if sys.platform == "win32":  # pragma: no cover - exercised on Windows only
     def _unlock(fh: IO[str]) -> None:
         pass
 
+    def _lock_shared(fh: IO[str]) -> None:
+        pass
+
 else:
     import fcntl
 
@@ -370,6 +373,9 @@ else:
 
     def _unlock(fh: IO[str]) -> None:
         fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+
+    def _lock_shared(fh: IO[str]) -> None:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_SH)
 
 
 Builder = Callable[[list[dict[str, Any]]], dict[str, Any] | None]
@@ -381,7 +387,8 @@ class _AppendOnlyLog:
     Every operation re-reads the whole file, so several objects or processes
     pointing at the same path always see the same history. Appends hold an
     exclusive ``flock`` (POSIX only) while they re-read, decide and write,
-    so two writers cannot both record "read number 1".
+    so two writers cannot both record "read number 1"; plain reads hold a
+    shared one, so they never see a half-written line.
     """
 
     def __init__(self, path: str | os.PathLike[str], events: frozenset[str], what: str) -> None:
@@ -421,7 +428,12 @@ class _AppendOnlyLog:
         """All events and the hash of the last line (the chain head)."""
         try:
             with open(self.path, encoding="utf-8", newline="") as fh:
-                text = fh.read()
+                # Shared lock: never read a line an append is half-way through.
+                _lock_shared(fh)
+                try:
+                    text = fh.read()
+                finally:
+                    _unlock(fh)
         except FileNotFoundError:
             return [], _GENESIS
         return self._parse(text)
