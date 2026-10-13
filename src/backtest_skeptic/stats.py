@@ -768,13 +768,19 @@ def newey_west(
       variance is not positive, the Bartlett estimate with the same lags is
       used and the result says so (``fallback=True``, ``kernel='bartlett'``).
 
-    ``lags`` defaults to ``floor(4 * (T / 100) ** (2 / 9))``, the rule of thumb
-    of Newey & West (1994). Raises for fewer than 2 observations, lags outside
-    ``0..T-1``, or zero dispersion.
+    ``lags`` defaults to ``floor(4 * (T / 100) ** (2 / 9))``. Newey & West
+    (1994) use this as the pilot lag from which their automatic procedure
+    estimates the bandwidth; here it is the lag itself, a common rule of
+    thumb. Raises for fewer than 2 observations, lags outside ``0..T-1``, or
+    zero dispersion.
 
     Limitations: asymptotic; with few observations per lag the standard
     error is itself noisy, and a lag choice made after seeing the result is
-    another degree of freedom.
+    another degree of freedom. With strong autocorrelation the default lag
+    is too short: on AR(1) data with coefficient 0.6, ``|t| > 1.96``
+    happened in 12.55% (T = 250) and 10.0% (T = 1000) of null simulations
+    (``docs/calibration.md``); pass a longer ``lags`` when the
+    autocorrelation is known to be persistent.
     """
     v = _returns(x, "x")
     t_obs = len(v)
