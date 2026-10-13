@@ -401,8 +401,13 @@ def _is_nan(x: Any) -> bool:
     return isinstance(x, (float, np.floating)) and math.isnan(x)
 
 
+def _is_missing(x: Any) -> bool:
+    # None, NaN, and the "nan" numpy writes when a list mixes NaN with strings.
+    return x is None or _is_nan(x) or (isinstance(x, str) and x == "nan")
+
+
 def _same_object(a: Any, b: Any) -> bool:
-    if a is b or (_is_nan(a) and _is_nan(b)):
+    if a is b or (_is_missing(a) and _is_missing(b)):
         return True
     try:
         return bool(a == b)

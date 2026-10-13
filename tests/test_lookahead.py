@@ -704,3 +704,23 @@ def test_full_length_prefix_checks_nothing(walk):
     assert not report.passed
     assert report.n_checked == 0
     assert not truncation_test(_next_close, walk, min_history=n).passed
+
+
+def test_none_warmup_in_string_signals_is_not_a_leak(walk):
+    def honest(b):
+        c = b.close
+        out = [None] * len(c)
+        for i in range(5, len(c)):
+            out[i] = "BUY" if c[i] > c[i - 5] else "SELL"
+        return out
+
+    def honest_nan(b):
+        c = b.close
+        out = [np.nan] * len(c)
+        for i in range(5, len(c)):
+            out[i] = "BUY" if c[i] > c[i - 5] else "SELL"
+        return out
+
+    for fn in (honest, honest_nan):
+        report = truncation_test(fn, walk, checkpoints=range(1, len(walk) + 1))
+        assert report.passed, report.mismatches[:3]
