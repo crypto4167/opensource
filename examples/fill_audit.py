@@ -119,8 +119,8 @@ def main() -> None:
             "\nfills are better than the bars can support."
         )
     if engine.booked_expectancy_r == engine.worst_expectancy_r:
-        print("The engine's booked expectancy equals its worst case: it resolves every doubt")
-        print("against the trader.")
+        print("The engine's booked expectancy equals its worst case: where the bars cannot")
+        print("decide, it books the outcome worse for the trader.")
 
     print("\nOne example of each issue in the naive log:")
     seen = set()

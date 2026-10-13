@@ -25,7 +25,7 @@ Contents:
 
 Module `backtest_skeptic.lookahead`. **Heuristic** (no canonical citation).
 
-The tests treat the code under test as a black box and only call it. A value computed for bar `i` may use bars `0..i` and nothing later. The tests are one-sided: a failure is hard evidence of a leak (an output demonstrably changed when later bars changed), while a pass is evidence, not proof.
+The tests treat the code under test as a black box and only call it. A value computed for bar `i` may use bars `0..i` and nothing later. The tests are one-sided: a failure is hard evidence of a leak (an output demonstrably changed when later bars changed), while a pass only covers the probes that ran.
 
 All three return a `LookaheadReport` with `passed`, `leaks`, `n_checked`, `n_values`, `n_mismatches`, `mismatches` (up to 50, earliest row first), `errors`, `first_bad_index`, `checkpoints` and `notes`. `passed` is true only when at least one probe ran, nothing changed and the function never raised. A report with nothing checked does not pass.
 
@@ -115,7 +115,7 @@ All three return a `NullTestResult`: `observed`, `null` (one metric value per si
 | `verify` | `True` | Re-resolve every strategy trade through the engine and raise if any does not reproduce. Turn off only for trade logs from another engine. |
 | `seed` | `0` | Random seed. |
 
-**Output:** a small `p_value` means random entries rarely matched the strategy. It says "the timing adds something", not "the strategy is profitable"; read the observed metric and costs separately.
+**Output:** a small `p_value` means random entries rarely matched the strategy. It says the timing adds something. Whether the strategy is profitable is a separate question: read the observed metric and the costs.
 
 **Limitations:** edge from the bracket geometry on a trending market, or from a long bias in a rising market, is shared by the null and is not credited to the signal. Random trades are resolved independently and may overlap, which makes the null slightly wider (conservative). `eligible` should describe where the strategy could have traded; a mask fitted after seeing the results biases the null. A p-value from one of many tried strategies needs a multiple-testing correction.
 
@@ -206,7 +206,7 @@ Module `backtest_skeptic.fills`. **Heuristic** (no canonical citation).
 
 **Output (`FillAudit`):** `issues`, `counts` per code, `trades_with_fail`, `fail_share`, `passed` (no fail anywhere; warnings do not stop a pass), `ambiguous_exits`, `checked` (how many trades each group of checks could examine), and `booked_expectancy_r`, `worst_expectancy_r`, `best_expectancy_r`: the mean R of trades with a stop and a target under the logged prices and two replays that differ only where OHLC data cannot decide the order of prices. A booked figure above the best case almost always means the log got fills the bars cannot support.
 
-**Limitations:** bars cannot show the order of prices inside a bar; the audit assumes only that the open is the first price and, for intrabar entries, that the price moves continuously from the open. Stops and targets are assumed fixed for the life of the trade (for trailing stops, leave out the levels and use reason `other`). An intrabar fill is checked against the bar's range only. Volume, liquidity and market impact are not modelled. A misaligned log shows up as many fails across the checks rather than as one diagnosis.
+**Limitations:** bars cannot show the order of prices inside a bar; the audit assumes only that the open is the first price and, for intrabar entries, that the price moves continuously from the open. Stops and targets are assumed fixed for the life of the trade (for trailing stops, leave out the levels and use reason `other`). An intrabar fill is checked against the bar's range only. Volume, liquidity and market impact are not modelled. A misaligned log shows up as many fails across the checks, with no single diagnosis.
 
 ## Robustness
 
@@ -218,7 +218,7 @@ Module `backtest_skeptic.robustness`. Values are per-trade (or per-period) resul
 
 ### `drop_best(values, k, groups=None)` (heuristic)
 
-**Catches:** an expectancy that only exists because of the right tail. Reports mean, total, t-statistic and win share before and after removing the best `k` values or groups. **Limitations:** removing the best values after seeing them is a selection, so the "after" t-statistic is a stress figure, not a test; values are treated as independent.
+**Catches:** an expectancy that only exists because of the right tail. Reports mean, total, t-statistic and win share before and after removing the best `k` values or groups. **Limitations:** removing the best values after seeing them is a selection, so the "after" t-statistic is a stress figure with no significance level; values are treated as independent.
 
 ### `subperiods(values, keys)` and `period_keys(times, freq)` (heuristic)
 
@@ -266,7 +266,7 @@ Number of return observations needed for a per-period Sharpe ratio `sr` to be si
 
 ### `min_backtest_length(n_trials, target_sharpe)`
 
-Minimum backtest length in years below which the best of `n_trials` independent skill-less configurations is expected to reach an in-sample annual Sharpe of `target_sharpe` by luck. The paper's example: with 5 years of data, no more than about 45 configurations before an annual Sharpe of 1 is expected from noise. **Limitations:** a necessary, not sufficient, condition; assumes independent trials with normal, serially uncorrelated returns.
+Minimum backtest length in years below which the best of `n_trials` independent skill-less configurations is expected to reach an in-sample annual Sharpe of `target_sharpe` by luck. The paper's example: with 5 years of data, no more than about 45 configurations before an annual Sharpe of 1 is expected from noise. **Limitations:** a necessary condition only; assumes independent trials with normal, serially uncorrelated returns.
 
 **Citation:** Bailey, D. H., Borwein, J. M., Lopez de Prado, M. & Zhu, Q. J. (2014). Pseudo-Mathematics and Financial Charlatanism: The Effects of Backtest Overfitting on Out-of-Sample Performance. *Notices of the AMS* 61(5).
 
@@ -312,7 +312,7 @@ Splits `n` bars into train, a purged gap and a final holdout that never share a 
 
 ### `HoldoutLedger(path)`
 
-Append-only JSON-lines record that each holdout was sealed once (`seal`) and read once (`read`). A second read raises `HoldoutAlreadyRead` unless `allow_reread=True`, which records it as a re-read. Each line carries the SHA-256 of the previous line, so editing, reordering or deleting a line is detected on load. **Limitations:** an audit trail, not access control; nothing stops someone from evaluating the holdout without telling the ledger.
+Append-only JSON-lines record that each holdout was sealed once (`seal`) and read once (`read`). A second read raises `HoldoutAlreadyRead` unless `allow_reread=True`, which records it as a re-read. Each line carries the SHA-256 of the previous line, so editing, reordering or deleting a line is detected on load. **Limitations:** an audit trail with no access control; nothing stops someone from evaluating the holdout without telling the ledger.
 
 **Citation (motivation):** Dwork, C., Feldman, V., Hardt, M., Pitassi, T., Reingold, O. & Roth, A. (2015). The reusable holdout: Preserving validity in adaptive data analysis. *Science* 349(6248).
 

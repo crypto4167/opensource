@@ -28,7 +28,7 @@ If the fill bar's open (the mid price, before costs) is at or beyond the stop, t
 
 ### 4. Gapped stops fill at the open
 
-From the entry bar on, each bar is checked for the stop and the target. A stop the market gapped through fills at the bar's open, not at the stop price. A target fills at the target price, even after a favourable gap.
+From the entry bar on, each bar is checked for the stop and the target. A stop the market gapped through fills at the bar's open. A target fills at the target price, even after a favourable gap.
 
 **Why:** a stop order becomes a market order at the first price through it, which after a gap is the open. Filling it at the stop price hides the gap loss; `fills.audit_fills` reports this as `gap_stop_fill_too_good`. A target is a resting limit order, which fills at its price; crediting the better open after a favourable gap would be optimistic, so the engine does not.
 
@@ -79,11 +79,11 @@ This is the fair-game ruin probability (Feller, vol. 1, ch. XIV). For a continuo
 
 A stop four times farther than the target therefore wins 80% of the time with no skill. `synthetic.random_walk_bars` generates prices with this property (highs and lows come from a continuous path inside each bar), and `examples/random_strategy_audit.py` shows random entries reaching the rate their brackets predict.
 
-The baseline is anchored at the fill bar's open, not at the signal bar's close. The engine brackets from the fill, and when trades are selected on the fill-bar open (the skip rule above, or `risk_band`), a signal-close baseline turns that selection into apparent skill.
+The baseline is anchored at the fill bar's open. The engine brackets from the fill, and when trades are selected on the fill-bar open (the skip rule above, or `risk_band`), a signal-close baseline turns that selection into apparent skill.
 
 ## Costs and the break-even rate
 
-Costs move the break-even point, not the no-skill rate. With half-spread `h`, slippage `sl`, fee rate `f`, entry fill `e` (`Trade.entry_price`) and risk `R` (`Trade.risk`), the engine books a target hit and a stop hit without a gap as:
+Costs leave the no-skill rate unchanged and raise the break-even rate. With half-spread `h`, slippage `sl`, fee rate `f`, entry fill `e` (`Trade.entry_price`) and risk `R` (`Trade.risk`), the engine books a target hit and a stop hit without a gap as:
 
 ```
 r_win  = (s * (target - s*h - e)    - f * (|e| + |target - s*h|))    / R

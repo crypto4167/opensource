@@ -159,9 +159,10 @@ def main() -> None:
     lines = str(check_factory(leaky_factory, bars, warmup=WINDOW)).splitlines()
     print("\n".join(lines[:2]))
     print(
-        "\nTruncation with check='prefix' compares every earlier row, so its earliest bar is"
-        "\nexact. Perturbation only sees rows near each cut, so its earliest bar is"
-        "\nearliest one it happened to probe."
+        "\nTruncation with check='prefix' compares every earlier row, so its earliest bar"
+        "\nis exact. Perturbation compares rows up to each cut, and a centred window or a"
+        "\none-bar shift only changes rows just before a cut, so its earliest bar depends"
+        "\non where the cuts fell."
     )
 
 
