@@ -65,6 +65,28 @@ def test_sharpe_ratio_rejects_degenerate_input():
         sharpe_ratio([[0.1, 0.2], [0.3, 0.4]])
 
 
+@pytest.mark.parametrize("scale", [1e-200, 1e200])
+def test_scale_free_statistics_survive_extreme_magnitudes(scale):
+    # Squaring 1e200 overflows and squaring 1e-200 underflows, which used to
+    # return a Sharpe ratio of 0.0 (huge) or raise "zero dispersion" (tiny).
+    rng = np.random.default_rng(7)
+    x = rng.normal(0.1, 1.0, 300)
+    sx = x * scale
+    assert sharpe_ratio(sx) == pytest.approx(sharpe_ratio(x), rel=1e-12)
+    np.testing.assert_allclose(moments(sx), moments(x), rtol=1e-12)
+    nw, nw_s = newey_west(x), newey_west(sx)
+    assert nw_s.t == pytest.approx(nw.t, rel=1e-12)
+    assert nw_s.se == pytest.approx(nw.se * scale, rel=1e-12)
+    assert nw_s.mean == pytest.approx(nw.mean * scale, rel=1e-12)
+    lo, lo_s = lo_annualized_sharpe(x, 4), lo_annualized_sharpe(sx, 4)
+    assert lo_s.annualized == pytest.approx(lo.annualized, rel=1e-12)
+    m = rng.normal(size=(200, 6))
+    m[:, 0] += 0.3
+    assert pbo(m * scale, n_splits=4).pbo == pbo(m, n_splits=4).pbo
+    with pytest.raises(ValueError, match="zero dispersion"):
+        sharpe_ratio([scale] * 5)
+
+
 def test_annualisation_round_trip():
     assert annualize_sharpe(0.1, 252) == pytest.approx(0.1 * math.sqrt(252))
     assert deannualize_sharpe(annualize_sharpe(0.07, 12), 12) == pytest.approx(0.07)
