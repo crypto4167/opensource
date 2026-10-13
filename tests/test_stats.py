@@ -295,6 +295,17 @@ def test_expected_max_sharpe_edge_cases_and_monte_carlo():
     assert expected_max_sharpe(100, 4.0) == pytest.approx(2 * expected_max_sharpe(100, 1.0))
 
 
+def test_expected_max_sharpe_for_very_many_trials():
+    # 1 - 1/N rounds to 1.0 in double precision from N ~ 1e16 on, and loses
+    # digits well before that; the upper quantile must come from 1/N directly.
+    g, Z = 0.57721566490153286, statistics.NormalDist()
+    for n in (1e12, 1e16, 1e20, 1e300):
+        exact = (1 - g) * -Z.inv_cdf(1 / n) + g * -Z.inv_cdf(1 / (n * math.e))
+        assert expected_max_sharpe(n, 1.0) == pytest.approx(exact, rel=1e-12)
+        assert min_backtest_length(n, 1.0) == pytest.approx(exact**2, rel=1e-12)
+    assert expected_max_sharpe(1e16, 1.0) < expected_max_sharpe(1e20, 1.0)
+
+
 def test_min_backtest_length_reproduces_notices_paper():
     # Bailey et al. (2014): with 5 years of data, no more than 45 configurations
     # before an annual in-sample Sharpe of 1 is expected from noise.

@@ -338,8 +338,10 @@ def expected_max_sharpe(n_trials: float, var_sharpe: float) -> float:
         raise ValueError(f"var_sharpe must be >= 0, got {var_sharpe!r}")
     if n == 1:
         return 0.0
-    z1 = _NORMAL.inv_cdf(1.0 - 1.0 / n)
-    z2 = _NORMAL.inv_cdf(1.0 - 1.0 / (n * math.e))
+    # PhiInv(1 - p) = -PhiInv(p): 1 - 1/N loses digits for large N and rounds
+    # to 1.0 from about N = 1e16, where PhiInv is undefined.
+    z1 = -_NORMAL.inv_cdf(1.0 / n)
+    z2 = -_NORMAL.inv_cdf(1.0 / n / math.e)
     return math.sqrt(v) * ((1.0 - EULER_GAMMA) * z1 + EULER_GAMMA * z2)
 
 
