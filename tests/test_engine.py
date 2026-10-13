@@ -249,3 +249,67 @@ def test_options_are_validated():
         run(bars, lambda i, h: None, same_bar="first")
     with pytest.raises(ValueError):
         run(bars, lambda i, h: None, entry_delay=-1)
+
+
+def test_open_through_stop_is_skipped_even_when_spread_lifts_the_fill():
+    # Mid open 98.95 is below the stop at 99. With a 0.1 half-spread the fill
+    # (99.05) sits above the stop, which used to create a 0.05 risk and a
+    # -3R trade on the very first bar.
+    bars = flat_then([(98.95, 99.5, 98.5, 99.2), (99.2, 103, 99.1, 102.5)])
+    res = run(bars, once_at(0, (1, 99.0, 102.0)), costs=Costs(half_spread=0.1))
+    assert res.trades == ()
+    assert res.skipped == {"stop_beyond_entry": 1}
+
+
+def test_bar_opening_through_the_target_books_the_target():
+    # The second bar gaps above the target and later trades down through the
+    # stop. The target filled first, at the open.
+    bars = flat_then([(100, 100.5, 99.5, 100.0), (102.5, 103.0, 98.5, 99.0)])
+    (t,) = run(bars, once_at(0, (1, 99.0, 102.0))).trades
+    assert t.reason == "target"
+    assert not t.ambiguous
+    assert t.exit_price == 102.0
+
+
+def test_bar_opening_through_the_stop_books_the_stop_even_with_target_first_rule():
+    bars = flat_then([(100, 100.5, 99.5, 100.0), (98.5, 102.5, 98.0, 102.0)])
+    (t,) = run(bars, once_at(0, (1, 99.0, 102.0)), same_bar="target").trades
+    assert t.reason == "stop"
+    assert not t.ambiguous
+    assert t.exit_price == 98.5
+
+
+@pytest.mark.parametrize("same_bar", ["stop", "target"])
+@pytest.mark.parametrize("max_bars", [None, 5])
+def test_resolve_many_is_bit_identical_to_the_scalar_engine(same_bar, max_bars):
+    from backtest_skeptic.engine import resolve_many
+
+    bars = random_walk_bars(4_000, vol=0.01, gap_vol=0.004, seed=21)
+    rng = np.random.default_rng(5)
+    k = 3_000
+    sig = rng.integers(0, len(bars) - 3, size=k)
+    side = rng.choice([-1.0, 1.0], size=k)
+    c = bars.close[sig]
+    stop = c * (1 - side * rng.uniform(0.001, 0.02, size=k))
+    target = c * (1 + side * rng.uniform(0.001, 0.03, size=k))
+    costs = Costs(half_spread=0.01, fee_rate=0.0003, slippage=0.005)
+    r, exit_index = resolve_many(
+        bars, sig, side, stop, target, costs=costs, max_bars=max_bars, same_bar=same_bar
+    )
+    skipped = 0
+    for i in range(k):
+        t = resolve_bracket(
+            bars,
+            int(sig[i]),
+            (int(side[i]), stop[i], target[i]),
+            costs=costs,
+            max_bars=max_bars,
+            same_bar=same_bar,
+        )
+        if t is None:
+            skipped += 1
+            assert math.isnan(r[i]) and exit_index[i] == -1
+        else:
+            assert r[i] == t.r
+            assert exit_index[i] == t.exit_index
+    assert 0 < skipped < k

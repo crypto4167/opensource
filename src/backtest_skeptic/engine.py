@@ -13,13 +13,17 @@ Fill rules
   ``0..i`` only, so the callback cannot read the future even by accident.
 * An order fills at the **open of bar i + 1** (``i + 1 + entry_delay`` with a
   delay), plus half the spread plus slippage against the trader.
-* If that open is already beyond the stop or the target, the trade is skipped
+* If that open (the mid price, before costs) is already at or beyond the
+  stop, or the fill leaves no room before the target, the trade is skipped
   and counted in :attr:`BacktestResult.skipped`.
 * From the entry bar on, each bar is checked for the stop and the target.
   A stop the market gapped through fills at the bar's open, not the stop
   price. A target fills at the target price, even after a favourable gap.
-* When one bar touches both levels the stop is booked (``same_bar="stop"``)
-  and the trade is flagged ``ambiguous``.
+* When one bar touches both levels, its open decides if it can: a bar that
+  opened beyond the stop hit the stop first, and one that opened beyond the
+  target hit the target first. A bar that opened between the levels and
+  touched both is ambiguous: OHLC data cannot say which came first. The stop
+  is booked (``same_bar="stop"``) and the trade is flagged ``ambiguous``.
 * ``max_bars`` closes the position at the close of its ``max_bars``-th bar,
   counting the entry bar. Positions still open at the end of the data close
   at the last close, after the last bar has been checked for stop and target.
@@ -41,12 +45,22 @@ from numpy.typing import ArrayLike, NDArray
 from .data import Bars
 from .trades import Costs, ExitReason, Setup, Trade, parse_setup
 
-__all__ = ["BacktestResult", "Decide", "resolve_bracket", "run", "run_signals"]
+__all__ = [
+    "BacktestResult",
+    "Decide",
+    "SameBar",
+    "resolve_bracket",
+    "resolve_many",
+    "run",
+    "run_signals",
+]
 
 Decide = Callable[[int, Bars], Any]
 SameBar = Literal["stop", "target"]
 
 _CHUNK = 64
+_ROW_CHUNK = 32_768  # setups resolved per block in resolve_many
+_FIRST_WINDOW = 16  # bars scanned in resolve_many's first pass; doubles after
 
 
 @dataclass(frozen=True)
@@ -134,7 +148,9 @@ def _resolve(
     entry = mid + side * (hs + slip)
     risk = side * (entry - stop)
     reward = side * (target - entry)
-    if risk <= 0:
+    # Judge the stop on the mid open: when the market opens through the stop,
+    # the spread must not lift the fill back above it and fake a tiny risk.
+    if side * (mid - stop) <= 0:
         return "stop_beyond_entry"
     if reward <= 0:
         return "target_beyond_entry"
@@ -153,9 +169,19 @@ def _resolve(
         js = _first_index(bars.high, e, end, stop, below=False)
         jt = _first_index(bars.low, e, js + 1 if js >= 0 else end, target, below=True)
 
-    ambiguous = js >= 0 and js == jt
+    ambiguous = False
+    stop_first = js >= 0 and (jt < 0 or js < jt)
+    if js >= 0 and js == jt:
+        o = float(bars.open[js])
+        if side * (o - stop) <= 0:
+            stop_first = True  # opened through the stop: it filled at the open
+        elif side * (target - o) <= 0:
+            stop_first = False  # opened through the target
+        else:
+            ambiguous = True
+            stop_first = same_bar == "stop"
     reason: ExitReason
-    if js >= 0 and (jt < 0 or js < jt or (ambiguous and same_bar == "stop")):
+    if stop_first:
         j = js
         reason = "stop"
         o = float(bars.open[j])
@@ -224,6 +250,165 @@ def resolve_bracket(
         risk_band,
     )
     return out if isinstance(out, Trade) else None
+
+
+def resolve_many(
+    bars: Bars,
+    signal_index: ArrayLike,
+    side: ArrayLike,
+    stop: ArrayLike,
+    target: ArrayLike,
+    *,
+    costs: Costs | None = None,
+    max_bars: int | None = None,
+    entry_delay: int = 0,
+    same_bar: SameBar = "stop",
+) -> tuple[NDArray[np.float64], NDArray[np.int64]]:
+    """Resolve many independent bracket setups at once.
+
+    The vectorised form of :func:`resolve_bracket`, for random-entry nulls
+    that need hundreds of thousands of trades. Each setup is resolved on its
+    own, ignoring the others. Returns ``(r, exit_index)``: the net R of each
+    setup, or ``NaN`` where the engine would skip it, and its exit bar, or
+    ``-1``. The comparisons and floating-point operations are the scalar
+    engine's, in the same order, so results are bit-identical to
+    :func:`resolve_bracket`; the test suite checks this.
+    """
+    _validate_options(max_bars, entry_delay, same_bar, None)
+    costs = costs or Costs()
+    sig = np.asarray(signal_index, dtype=np.int64)
+    sides = np.asarray(side, dtype=np.float64)
+    stops = np.asarray(stop, dtype=np.float64)
+    targets = np.asarray(target, dtype=np.float64)
+    k = len(sig)
+    for name, arr in (("side", sides), ("stop", stops), ("target", targets)):
+        if arr.shape != (k,):
+            raise ValueError(f"{name} must have one value per setup ({k}), got shape {arr.shape}")
+    if not np.isin(sides, (-1.0, 1.0)).all():
+        raise ValueError("side must be -1 or +1 for every setup")
+    if not (np.isfinite(stops).all() and np.isfinite(targets).all()):
+        raise ValueError("stop and target levels must be finite")
+    if k and (int(np.min(sig)) < 0 or int(np.max(sig)) + 1 + entry_delay >= len(bars)):
+        raise ValueError("signal_index out of range: no bar to fill on")
+    r = np.full(k, np.nan)
+    exit_index = np.full(k, -1, dtype=np.int64)
+    for a in range(0, k, _ROW_CHUNK):
+        b = min(k, a + _ROW_CHUNK)
+        r[a:b], exit_index[a:b] = _resolve_block(
+            bars,
+            sig[a:b],
+            sides[a:b],
+            stops[a:b],
+            targets[a:b],
+            costs,
+            max_bars,
+            entry_delay,
+            same_bar,
+        )
+    return r, exit_index
+
+
+def _resolve_block(
+    bars: Bars,
+    sig: NDArray[np.int64],
+    side: NDArray[np.float64],
+    stop: NDArray[np.float64],
+    target: NDArray[np.float64],
+    costs: Costs,
+    max_bars: int | None,
+    entry_delay: int,
+    same_bar: SameBar,
+) -> tuple[NDArray[np.float64], NDArray[np.int64]]:
+    n = len(bars)
+    k = len(sig)
+    r = np.full(k, np.nan)
+    exit_index = np.full(k, -1, dtype=np.int64)
+    e = sig + 1 + entry_delay
+    hs, slip = costs.half_spread, costs.slippage
+    mid = bars.open[e]
+    entry = mid + side * (hs + slip)
+    risk = side * (entry - stop)
+    reward = side * (target - entry)
+    rows = np.flatnonzero((side * (mid - stop) > 0) & (reward > 0))
+    if rows.size == 0:
+        return r, exit_index
+    last = np.full(k, n - 1, dtype=np.int64)
+    if max_bars is not None:
+        last = np.minimum(last, e + max_bars - 1)
+    js = np.full(k, -1, dtype=np.int64)
+    jt = np.full(k, -1, dtype=np.int64)
+    _scan(bars, rows, e, last, side, stop, target, js, jt)
+
+    side_s, stop_s, target_s = side[rows], stop[rows], target[rows]
+    js_s, jt_s, last_s = js[rows], jt[rows], last[rows]
+    has_s, has_t = js_s >= 0, jt_s >= 0
+    same = has_s & has_t & (js_s == jt_s)
+    o_same = bars.open[np.where(same, js_s, 0)]
+    opened_stop = side_s * (o_same - stop_s) <= 0
+    opened_target = side_s * (target_s - o_same) <= 0
+    same_stop = opened_stop | (~opened_target & (same_bar == "stop"))
+    stop_out = has_s & (~has_t | (js_s < jt_s) | (same & same_stop))
+    tgt_out = ~stop_out & has_t
+    j = np.where(stop_out, js_s, np.where(tgt_out, jt_s, last_s))
+    o = bars.open[j]
+    stop_mid = np.where(side_s > 0, np.minimum(stop_s, o), np.maximum(stop_s, o))
+    exit_fill = np.where(
+        stop_out,
+        stop_mid - side_s * (hs + slip),
+        np.where(tgt_out, target_s - side_s * hs, bars.close[j] - side_s * (hs + slip)),
+    )
+    entry_s = entry[rows]
+    fees = costs.fee_rate * (np.abs(entry_s) + np.abs(exit_fill))
+    r[rows] = (side_s * (exit_fill - entry_s) - fees) / risk[rows]
+    exit_index[rows] = j
+    return r, exit_index
+
+
+def _scan(
+    bars: Bars,
+    rows: NDArray[np.intp],
+    e: NDArray[np.int64],
+    last: NDArray[np.int64],
+    side: NDArray[np.float64],
+    stop: NDArray[np.float64],
+    target: NDArray[np.float64],
+    js: NDArray[np.int64],
+    jt: NDArray[np.int64],
+) -> None:
+    """First stop and target touches for ``rows``, written into ``js`` and ``jt``.
+
+    Scans windows of growing width from each entry bar. A row is settled in
+    the first window that holds any touch, which gives the scalar engine's
+    outcome: the engine looks for the target only up to the first stop, and
+    booking the earlier of the two is the same thing. Rows whose window
+    reaches ``last`` with no touch exit on time or at the end of the data
+    (``js = jt = -1``).
+    """
+    n = len(bars)
+    low, high = bars.low, bars.high
+    active = rows
+    offset = 0
+    width = _FIRST_WINDOW
+    while active.size:
+        start = e[active] + offset
+        idx = start[:, None] + np.arange(width)
+        valid = idx <= last[active, None]
+        idx_c = np.minimum(idx, n - 1)
+        lo = low[idx_c]
+        hi = high[idx_c]
+        is_long = (side[active] > 0)[:, None]
+        st = stop[active, None]
+        tg = target[active, None]
+        stop_hit = valid & np.where(is_long, lo <= st, hi >= st)
+        tgt_hit = valid & np.where(is_long, hi >= tg, lo <= tg)
+        any_s = stop_hit.any(axis=1)
+        any_t = tgt_hit.any(axis=1)
+        js[active] = np.where(any_s, start + np.argmax(stop_hit, axis=1), -1)
+        jt[active] = np.where(any_t, start + np.argmax(tgt_hit, axis=1), -1)
+        done = any_s | any_t | (start + width - 1 >= last[active])
+        active = active[~done]
+        offset += width
+        width *= 2
 
 
 def run(

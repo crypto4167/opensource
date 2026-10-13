@@ -19,9 +19,28 @@ The package bundles the checks that catch the usual ways a backtest lies:
 * :mod:`~backtest_skeptic.spanning` - does a known factor explain the returns?
 """
 
+from . import (
+    baseline,
+    fills,
+    holdout,
+    lookahead,
+    random_entry,
+    robustness,
+    spanning,
+    stats,
+    synthetic,
+)
+from .baseline import no_skill_test
 from .data import Bars, DataError
-from .engine import BacktestResult, resolve_bracket, run, run_signals
+from .engine import BacktestResult, resolve_bracket, resolve_many, run, run_signals
+from .fills import TradeLog, audit_fills
+from .holdout import HoldoutLedger, TrialRegistry, split_holdout
+from .lookahead import check_factory, perturbation_test, truncation_test
 from .metrics import Summary, summarize
+from .random_entry import random_entry_test, side_test
+from .robustness import block_bootstrap, concentration, cost_stress, entry_delay_test
+from .spanning import spanning_regression
+from .stats import deflated_sharpe_ratio, pbo, probabilistic_sharpe_ratio
 from .trades import LONG, SHORT, Costs, Setup, Trade
 
 __version__ = "0.1.0"
@@ -33,12 +52,41 @@ __all__ = [
     "Bars",
     "Costs",
     "DataError",
+    "HoldoutLedger",
     "Setup",
     "Summary",
     "Trade",
+    "TradeLog",
+    "TrialRegistry",
     "__version__",
+    "audit_fills",
+    "baseline",
+    "block_bootstrap",
+    "check_factory",
+    "concentration",
+    "cost_stress",
+    "deflated_sharpe_ratio",
+    "entry_delay_test",
+    "fills",
+    "holdout",
+    "lookahead",
+    "no_skill_test",
+    "pbo",
+    "perturbation_test",
+    "probabilistic_sharpe_ratio",
+    "random_entry",
+    "random_entry_test",
     "resolve_bracket",
+    "resolve_many",
+    "robustness",
     "run",
     "run_signals",
+    "side_test",
+    "spanning",
+    "spanning_regression",
+    "split_holdout",
+    "stats",
     "summarize",
+    "synthetic",
+    "truncation_test",
 ]
