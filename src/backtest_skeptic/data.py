@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import csv
 from collections.abc import Iterable, Mapping, Sequence
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +42,33 @@ def _as_float_array(values: ArrayLike, name: str) -> FloatArray:
     if arr.ndim != 1:
         raise DataError(f"{name}: expected a one-dimensional array, got shape {arr.shape}")
     return arr
+
+
+def _time_order(t: NDArray[Any]) -> NDArray[Any]:
+    """Values that order string timestamps in time, or ``t`` itself.
+
+    Strings compare character by character, which misorders epoch numbers of
+    different lengths ("999" > "1000") and ISO-8601 times with different UTC
+    offsets. Numeric strings compare as numbers and ISO-8601 strings as
+    instants; anything else keeps its own ordering.
+    """
+    if t.dtype.kind not in "USO" or not all(isinstance(x, str) for x in t):
+        return t
+    texts = [x.strip() for x in t]
+    try:
+        return np.array([float(x) for x in texts])
+    except ValueError:
+        pass
+    try:
+        parsed = [datetime.fromisoformat(x) for x in texts]
+    except ValueError:
+        return t
+    aware = {p.utcoffset() is not None for p in parsed}
+    if len(aware) > 1:
+        raise DataError("time mixes timestamps with and without a UTC offset")
+    return np.array(
+        [(p if p.tzinfo else p.replace(tzinfo=timezone.utc)).timestamp() for p in parsed]
+    )
 
 
 def _describe(indices: NDArray[np.intp]) -> str:
@@ -123,7 +151,8 @@ class Bars:
                 )
             if t is not None and n > 1:
                 try:
-                    increasing = t[1:] > t[:-1]
+                    order = _time_order(t)
+                    increasing = order[1:] > order[:-1]
                 except TypeError as exc:
                     raise DataError(f"time values are not comparable ({exc})") from exc
                 bad = np.flatnonzero(~np.asarray(increasing, dtype=bool)) + 1
@@ -198,9 +227,15 @@ class Bars:
         if self.time is None:
             raise DataError("these bars have no timestamps")
         pos = int(np.searchsorted(self.time, when, side="left"))
-        if pos >= len(self) or self.time[pos] != when:
-            raise KeyError(f"no bar with time {when!r}")
-        return pos
+        if pos < len(self) and self.time[pos] == when:
+            return pos
+        if self.time.dtype.kind in "USO":
+            # String timestamps are validated in time order, which need not be
+            # the character order searchsorted assumes.
+            hits = np.flatnonzero(self.time == when)
+            if len(hits):
+                return int(hits[0])
+        raise KeyError(f"no bar with time {when!r}")
 
     def with_prices(
         self,

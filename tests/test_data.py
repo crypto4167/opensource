@@ -93,3 +93,26 @@ def test_from_csv_reads_time_column_after_a_byte_order_mark(tmp_path):
     bars = Bars.from_csv(path)
     assert bars.time is not None
     assert list(bars.time) == ["2024-01-01", "2024-01-02"]
+
+
+def test_numeric_time_strings_are_ordered_as_numbers(tmp_path):
+    path = tmp_path / "epoch.csv"
+    path.write_text("time,open,high,low,close\n999999999,1,1,1,1\n1000000000,1,1,1,1\n")
+    bars = Bars.from_csv(path)
+    assert bars.index_of("1000000000") == 1
+    with pytest.raises(DataError, match="strictly increasing"):
+        Bars([1, 1], [1, 1], [1, 1], [1, 1], time=["1000000000", "999999999"])
+
+
+def test_iso_time_strings_with_offsets_are_ordered_as_instants():
+    # 10:00+05:00 is 05:00 UTC, four hours before the first bar.
+    with pytest.raises(DataError, match="strictly increasing"):
+        Bars(
+            [1, 1], [1, 1], [1, 1], [1, 1],
+            time=["2024-01-01T09:00:00+00:00", "2024-01-01T10:00:00+05:00"],
+        )  # fmt: skip
+    # The autumn DST change repeats local times but the instants still increase.
+    times = ["2024-10-27T02:30:00+02:00", "2024-10-27T02:00:00+01:00"]
+    bars = Bars([1, 1], [1, 1], [1, 1], [1, 1], time=times)
+    assert bars.index_of(times[1]) == 1
+    assert bars.index_of(times[0]) == 0
