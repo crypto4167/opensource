@@ -712,7 +712,8 @@ def truncation_test(
         if k == n:
             continue  # the full data as its own prefix cannot differ: nothing to check
         try:
-            raw = fn(bars.prefix(k))
+            # A copy: a prefix view's .base would still hold the whole series.
+            raw = fn(_copied_prefix(bars, k))
         except Exception as exc:
             if k < min_history:
                 skipped.append(k)
@@ -729,6 +730,12 @@ def truncation_test(
         else:
             col.compare(k, full[:k], out, 0, one_d, rtol, atol)
     return col.report("truncation", ks, skipped, names, _activity_notes(full))
+
+
+def _copied_prefix(bars: Bars, k: int) -> Bars:
+    """The first ``k`` bars in fresh arrays that share no memory with ``bars``."""
+    p = bars.prefix(k)
+    return Bars(p.open, p.high, p.low, p.close, volume=p.volume, time=p.time, validate=False)
 
 
 def perturbation_test(

@@ -724,3 +724,16 @@ def test_none_warmup_in_string_signals_is_not_a_leak(walk):
     for fn in (honest, honest_nan):
         report = truncation_test(fn, walk, checkpoints=range(1, len(walk) + 1))
         assert report.passed, report.mismatches[:3]
+
+
+def test_truncation_sees_a_leak_through_the_base_of_a_prefix_view(walk):
+    def through_base(b):
+        full = b.close
+        while isinstance(full.base, np.ndarray):
+            full = full.base
+        out = np.full(len(b), np.nan)
+        m = min(len(b), len(full) - 1)
+        out[:m] = full[1 : m + 1]
+        return out
+
+    assert not truncation_test(through_base, walk, check="prefix").passed
