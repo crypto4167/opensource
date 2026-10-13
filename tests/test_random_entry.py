@@ -107,6 +107,27 @@ def test_matched_sides_on_deterministic_bars_give_a_constant_null():
     np.testing.assert_allclose(win.null, 0.6)
 
 
+def test_matched_sides_keep_each_side_with_its_own_bracket():
+    # Longs use a 1% stop and 2% target (+2R on the ramp); shorts use a 4% stop
+    # and 0.4% target (+0.1R). Matching the side mix but pairing sides with
+    # brackets at random gives a long a short's bracket (+0.1R) or a short a
+    # long's (-1R), so the null would no longer describe this strategy.
+    bars = ramp_bars()
+    side = np.zeros(len(bars))
+    side[[5, 15, 25, 35, 45, 55]] = 1
+    side[[65, 75, 85, 95]] = -1
+    close = bars.close
+    stop_frac = np.where(side > 0, 0.01, 0.04)
+    target_frac = np.where(side > 0, 0.02, 0.004)
+    stop = close * (1 - side * stop_frac)
+    target = close * (1 + side * target_frac)
+    res = run_signals(bars, side, stop, target)
+    assert [round(t.r, 9) for t in res.trades] == [2.0] * 6 + [0.1] * 4
+    out = random_entry_test(bars, res, n_sims=200, seed=1)
+    assert out.observed == pytest.approx(1.24)
+    np.testing.assert_allclose(out.null, 1.24, atol=1e-9)
+
+
 def test_geometry_is_copied_as_fractions_of_the_signal_close():
     # Prices triple over the series. As fractions (1% stop, 2% target) every
     # random long wins 2R; absolute distances copied from the first trade

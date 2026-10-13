@@ -309,7 +309,10 @@ def random_entry_test(
         close[sig]``, ``target_frac = side * (target - close[sig]) /
         close[sig]``; a random entry at bar ``j`` with side ``s`` gets
         ``stop = close[j] * (1 - s * stop_frac)`` and ``target = close[j] *
-        (1 + s * target_frac)``. Or a callable ``geometry(bars, j, side) ->
+        (1 + s * target_frac)``. With ``sides="match"`` each simulation uses
+        every strategy trade's side and bracket together, once each, in
+        random order, so side-dependent brackets stay with their side. Or a
+        callable ``geometry(bars, j, side) ->
         (stop, target)`` for rules such as ATR multiples; it must only read
         bars ``0..j``.
     eligible:
@@ -374,7 +377,15 @@ def random_entry_test(
     level_fn: Callable[[IntArray, FloatArray, IntArray], tuple[FloatArray, FloatArray]]
     if isinstance(geometry, str):
         stop_frac, target_frac = _strategy_fractions(close, tlist)
-        tmpl = rng.integers(0, n, size=(n_sims, n)).ravel()
+        if sides == "match":
+            # Keep each strategy trade's side with its own bracket: drawing them
+            # independently breaks side-dependent geometry, which on a drifting
+            # market shifts the null away from the strategy's own payoffs.
+            perm = rng.permuted(np.tile(np.arange(n), (n_sims, 1)), axis=1)
+            side_mat = strat_sides[perm]
+            tmpl = perm.ravel()
+        else:
+            tmpl = rng.integers(0, n, size=(n_sims, n)).ravel()
         level_fn = _fraction_levels(close, stop_frac, target_frac)
         geometry_name = "strategy"
     else:
