@@ -65,6 +65,9 @@ Checks
    that open. A stop order turns into a market order at the first price
    through it, which is the open. Several popular engines fill such stops at
    the stop price, which hides the gap loss.
+   ``stop_fill_too_good`` (fail): a stop exit on a bar that did not open
+   beyond the stop, filled better than the stop. A fixed stop triggers at the
+   stop and fills there or worse.
 6. ``missed_earlier_touch`` (fail): replaying the bars from the entry bar up
    to the bar before the exit (and the exit bar itself for an exit at its
    close that is not a stop or target exit), some bar traded through the
@@ -194,6 +197,10 @@ CODES: Mapping[str, tuple[Severity, str]] = MappingProxyType(
         "gap_stop_fill_too_good": (
             "fail",
             "stop filled better than the open of a bar that gapped through it",
+        ),
+        "stop_fill_too_good": (
+            "fail",
+            "stop filled better than the stop on a bar that did not open through it",
         ),
         "missed_earlier_touch": (
             "fail",
@@ -1062,6 +1069,17 @@ class _Auditor:
                     f"bar {x} opened at {_fmt(open_x)}, through the stop {_fmt(stop)}, but the "
                     f"stop filled at mid {_fmt(exit_mid)}; a stop becomes a market order at "
                     f"the open, so the fill can be no better than {_fmt(open_x)}",
+                    x,
+                )
+        if t.stop is not None and stop_exit:
+            stop = t.stop
+            gapped = x > e and side * (open_x - stop) < -self.eps(stop)
+            if not gapped and side * (exit_mid - stop) > self.eps(stop):
+                self.add(
+                    "stop_fill_too_good",
+                    k,
+                    f"the stop {_fmt(stop)} filled at mid {_fmt(exit_mid)} on bar {x}, which "
+                    "did not open through it; a fixed stop fills at the stop or worse",
                     x,
                 )
 

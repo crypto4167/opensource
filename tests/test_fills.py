@@ -812,3 +812,22 @@ def test_trade_row_from_engine_trade():
     row = TradeRow.from_trade(t)
     assert row.as_dict()["reason"] == "target"
     assert row.signal_index == 0
+
+
+# ------------------------------------------------------- adversarial review
+
+
+def test_stop_filled_better_than_the_stop_on_a_bar_that_did_not_gap_fails():
+    bars = Bars([100, 100, 100], [101, 101, 101], [99, 99, 90], [100, 100, 95])
+    rec = dict(side=1, entry_index=1, exit_index=2, entry_price=100, exit_price=99)
+    audit = audit_fills(bars, [dict(rec, stop=95, target=110, reason="stop")])
+    assert "stop_fill_too_good" in codes(audit)
+    assert not audit.passed
+    short = Bars([100, 100, 100], [101, 101, 110], [99, 99, 99], [100, 100, 105])
+    rec = dict(side=-1, entry_index=1, exit_index=2, entry_price=100, exit_price=101)
+    assert "stop_fill_too_good" in codes(
+        audit_fills(short, [dict(rec, stop=105, target=90, reason="stop")])
+    )
+    # A fill at the stop, or worse, is fine.
+    rec = dict(side=1, entry_index=1, exit_index=2, entry_price=100, exit_price=94.5)
+    assert codes(audit_fills(bars, [dict(rec, stop=95, target=110, reason="stop")])) == []
