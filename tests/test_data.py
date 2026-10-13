@@ -82,3 +82,14 @@ def test_from_dataframe_duck_typed():
     bars = Bars.from_dataframe(Frame())
     assert list(bars.time) == [10, 20]
     assert list(bars.close) == [1.5, 2.5]
+
+
+def test_from_csv_reads_time_column_after_a_byte_order_mark(tmp_path):
+    path = tmp_path / "bom.csv"
+    path.write_text(
+        "Date,Open,High,Low,Close\n2024-01-01,1,2,0.5,1.5\n2024-01-02,1.5,2,1,1.8\n",
+        encoding="utf-8-sig",
+    )
+    bars = Bars.from_csv(path)
+    assert bars.time is not None
+    assert list(bars.time) == ["2024-01-01", "2024-01-02"]

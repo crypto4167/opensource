@@ -261,7 +261,7 @@ class Bars:
         :class:`DataError` with its line number.
         """
         mapping = {k.lower(): v for k, v in (columns or {}).items()}
-        with open(path, newline="", encoding="utf-8") as fh:
+        with open(path, newline="", encoding="utf-8-sig") as fh:
             reader = csv.DictReader(fh)
             if reader.fieldnames is None:
                 raise DataError(f"{path}: empty file")
