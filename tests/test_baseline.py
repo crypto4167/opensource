@@ -218,6 +218,20 @@ def test_bug3_time_exit_winners_are_not_counted_as_wins():
     assert res.all_exits_n == 3
     assert res.all_exits_edge == pytest.approx(((0.7 - 0.4) + (0 - 0.4) + (0.52 - 0.4)) / 3)
     assert res.exclusion_bias == pytest.approx((0.4 - 0.7) + (0.4 - 0.52))
+    # The score sum 1.22 is tested as a count of at least 2 wins out of 3.
+    assert res.all_exits_p_value == pytest.approx(3 * 0.4**2 * 0.6 + 0.4**3)
+
+
+def test_all_exits_p_value_is_exact_when_every_trade_hit_a_level():
+    # A normal approximation gave one target hit at p0 = 0.4 a p-value of
+    # 0.11; the exact tail is 0.4. Small samples with far targets (low p0) were
+    # flagged at 5% about 7-8% of the time on a random walk.
+    one = no_skill_test([long_target_trade(costs=Costs())])
+    assert one.p_value == pytest.approx(0.4)
+    assert one.all_exits_p_value == pytest.approx(0.4)
+    two = no_skill_test([long_target_trade(costs=Costs()), long_stop_trade(costs=Costs())])
+    assert two.all_exits_p_value == pytest.approx(two.p_value)
+    assert two.all_exits_p_value == pytest.approx(1 - 0.6**2)
 
 
 def test_bug3_wide_targets_with_time_exits_do_not_look_skilled(walk):
