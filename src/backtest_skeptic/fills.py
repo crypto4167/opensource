@@ -609,6 +609,12 @@ class TradeLog:
             if reader.fieldnames is None:
                 raise ValueError(f"{path}: empty file")
             records = list(reader)
+        for line, rec in enumerate(records, start=2):
+            if None in rec:
+                raise ValueError(
+                    f"{path}, line {line}: more fields than the header has columns "
+                    "(an unquoted comma in a number?)"
+                )
         cols = dict(columns or {})
         unknown = sorted(set(cols) - set(_FIELDS))
         if unknown:

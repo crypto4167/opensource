@@ -889,3 +889,13 @@ def test_csv_with_a_byte_order_mark_keeps_its_first_column(tmp_path):
     log = TradeLog.from_csv(path, bars)
     assert log[0].stop == 95.0
     assert "missed_earlier_touch" in codes(audit_fills(bars, log))
+
+
+def test_csv_row_with_more_fields_than_the_header_is_an_error(tmp_path):
+    bars = Bars([100] * 4, [101] * 4, [99] * 4, [100] * 4)
+    path = tmp_path / "extra.csv"
+    path.write_text(
+        "side,entry_index,exit_index,entry_price,exit_price,stop\nlong,0,3,100,103,1,095\n"
+    )
+    with pytest.raises(ValueError, match="line 2"):
+        TradeLog.from_csv(path, bars)
