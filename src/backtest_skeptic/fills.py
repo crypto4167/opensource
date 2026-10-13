@@ -105,8 +105,9 @@ bar's close). The two replays differ only where OHLC data cannot decide:
 
 * **worst case**: a bar touching both levels hits the stop first, and a level
   touched on an intrabar entry or exit bar counts when it is the stop;
-* **best case**: such a bar hits the target first, and an uncertain touch
-  counts when it is the target.
+* **best case**: such a bar hits the target first, an uncertain touch
+  counts when it is the target, and a stop counts only when the price
+  traded through it (engines differ on whether an exact touch fills).
 
 :attr:`FillAudit.booked_expectancy_r`, :attr:`FillAudit.worst_expectancy_r` and
 :attr:`FillAudit.best_expectancy_r` are the mean R of the same trades under
@@ -1241,20 +1242,37 @@ class _Auditor:
     def target_fill(self, side: int, target: float) -> float:
         return target - side * self.hs
 
+    def hits(self, t: TradeRow, hi: Any, lo: Any, optimistic: bool) -> tuple[Any, Any]:
+        """Stop and target hits on highs ``hi`` and lows ``lo`` (floats or arrays).
+
+        Engines differ on whether a level touched exactly fills, so the worst
+        case counts any touch and the best case counts a stop only when the
+        price traded through it, and a target touched within the slack.
+        """
+        assert t.stop is not None and t.target is not None
+        stop, target = t.stop, t.target
+        if not optimistic:
+            if t.side > 0:
+                return lo <= stop, hi >= target
+            return hi >= stop, lo <= target
+        es, et = self.eps(stop), self.eps(target)
+        if t.side > 0:
+            return lo < stop - es, hi >= target - et
+        return hi > stop + es, lo <= target + et
+
     def resolve(self, t: TradeRow, j: int, win: _Window, optimistic: bool) -> float | None:
         """Exit fill if the bracket closes the trade on bar ``j``, else ``None``."""
         assert t.stop is not None and t.target is not None
         side, stop, target = t.side, t.stop, t.target
         op, hi, lo = float(self.o[j]), float(self.h[j]), float(self.lo[j])
         if win.live_open:
-            if side * (op - stop) <= 0:
+            # Optimistically a stop needs trading through and a target a touch.
+            es, et = (self.eps(stop), self.eps(target)) if optimistic else (0.0, 0.0)
+            if side * (op - stop) < -es or (not optimistic and side * (op - stop) <= 0):
                 return self.stop_fill(side, op)
-            if side * (op - target) >= 0:
+            if side * (op - target) >= -et:
                 return self.target_fill(side, target)
-        if side > 0:
-            hit_s, hit_t = lo <= stop, hi >= target
-        else:
-            hit_s, hit_t = hi >= stop, lo <= target
+        hit_s, hit_t = self.hits(t, hi, lo, optimistic)
         hit_s, hit_t = hit_s and win.stop > 0, hit_t and win.target > 0
         if optimistic:
             if hit_t:
@@ -1288,11 +1306,8 @@ class _Auditor:
             # Bars strictly inside the trade are fully live: first touch decides.
             a, b = e + 1, x
             if b > a:
-                hi, lo = self.h[a:b], self.lo[a:b]
-                if side > 0:
-                    hit = (lo <= t.stop) | (hi >= t.target)
-                else:
-                    hit = (hi >= t.stop) | (lo <= t.target)
+                hit_s, hit_t = self.hits(t, self.h[a:b], self.lo[a:b], optimistic)
+                hit = hit_s | hit_t
                 if hit.any():
                     fill = self.resolve(t, a + int(np.argmax(hit)), _LIVE, optimistic)
                     assert fill is not None

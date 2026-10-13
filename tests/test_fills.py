@@ -864,3 +864,16 @@ def test_market_on_close_entry_on_a_flat_bar_is_a_close_fill():
     assert audit.passed
     assert audit.worst_expectancy_r == pytest.approx(0.6)
     assert audit.best_expectancy_r == pytest.approx(0.6)
+
+
+@pytest.mark.parametrize("stop_low", [(95.0, 95.0), (1.1 + 2.2, 3.3)])
+def test_an_exact_touch_of_the_stop_is_only_counted_in_the_worst_case(stop_low):
+    stop, low = stop_low
+    bars = Bars([100, 100, 100, 100], [101, 101, 101, 111], [99, 99, low, 99], [100, 100, 100, 110])
+    entry = 100.0
+    rec = dict(side=1, entry_index=1, exit_index=3, entry_price=entry, exit_price=110)
+    audit = audit_fills(bars, [dict(rec, stop=stop, target=110, reason="target")])
+    assert audit.passed
+    assert audit.worst_expectancy_r == pytest.approx(-1.0)
+    booked = (110 - entry) / (entry - stop)
+    assert audit.best_expectancy_r == pytest.approx(booked)
