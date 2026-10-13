@@ -978,6 +978,10 @@ class _Auditor:
         )
         level_exit = stop_exit or target_exit
         entry_mode = self.mode(entry_mid, e)
+        if t.signal_index == e and self.near(entry_mid, float(self.c[e])):
+            # A fill on the signal bar can only be at its close (check 2),
+            # even when the bar opened at the same price.
+            entry_mode = "close"
         exit_mode: _Mode | None = None if level_exit else self.mode(exit_mid, x)
         self.checked["bar_range"] += 1
 

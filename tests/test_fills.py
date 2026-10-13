@@ -843,3 +843,24 @@ def test_target_filled_better_than_the_target_intrabar_warns():
         rec = dict(side=1, entry_index=1, exit_index=2, entry_price=100, exit_price=price)
         audit = audit_fills(bars, [dict(rec, stop=95, target=110, reason="target")])
         assert "target_fill_better_than_target" not in codes(audit)
+
+
+def test_market_on_close_entry_on_a_flat_bar_is_a_close_fill():
+    # Bar 1 opens and closes at 100 and dips to 94 before the close fill.
+    bars = Bars([100, 100, 100, 100], [101, 101, 101, 104], [99, 94, 99, 99], [100, 100, 100, 103])
+    rec = dict(
+        side=1,
+        signal_index=1,
+        entry_index=1,
+        exit_index=3,
+        entry_price=100,
+        exit_price=103,
+        stop=95,
+        target=110,
+        reason="time",
+    )
+    audit = audit_fills(bars, [rec])
+    assert codes(audit) == ["filled_at_signal_close"]
+    assert audit.passed
+    assert audit.worst_expectancy_r == pytest.approx(0.6)
+    assert audit.best_expectancy_r == pytest.approx(0.6)
